@@ -8,3 +8,4 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+- Share links use the payload format "<mime>\n<content>" LZ-compressed after the first '#' (src/lib/codec.ts); keep it backward compatible so old x11 links keep opening.

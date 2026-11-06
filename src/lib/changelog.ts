@@ -10,6 +10,8 @@ export const CHANGELOG: { version: string; date: string; title: string; items: s
       "Open Blob launches content through local object URLs; active HTML/XHTML/SVG is sandboxed",
       "Text charset controls for UTF-8, UTF-16LE/BE, Windows-1252, Latin-1 and ASCII",
       "Raw endpoint health diagnostics and Cloudflare R2 setup documentation",
+      "Dynamic rewrite-combination search compares final encoded links within a bounded CPU budget",
+      "SVG comment and metadata cleanup now uses the browser XML DOM parser rather than regex stripping",
     ],
   },
   {
@@ -57,7 +59,7 @@ export const TODO: { text: string; done: boolean }[] = [
   { text: "Compression 2.0 for large files", done: true },
   { text: "Add Brotli, Zstandard, LZMA2, Zopfli, BZip2, PPMd and LZHAM local WASM codecs with backward-compatible codec IDs", done: false },
   { text: "Parser-based HTML, CSS and JavaScript comment removal / conservative minification", done: true },
-  { text: "Dynamic rewrite-combination search with validity checks and measured final-link comparisons", done: false },
+  { text: "Bounded dynamic rewrite-combination search comparing final encoded link lengths", done: true },
   { text: "Add text/binary format-specific optimization controls and a dynamic rewrite-combination search", done: false },
   { text: "Add Pyodide and MicroPython runtime packs with worker, memory, timeout and filesystem settings", done: false },
   { text: "Add Clang/LLVM WASM compilation and WASI runtime support for C/C++ projects", done: false },

@@ -37,4 +37,17 @@ describe("codec v2", () => {
     const v2 = await encodeV2({ mime: "text/html", bytes: new TextEncoder().encode(text) });
     expect(v2.length).toBeLessThan(encodePayload("text/html", text).length);
   });
+  it("round-trips emoji, flags, modifiers and joined emoji in v2", async () => {
+    const text = "😀 🚀 🧑🏽‍🚀 👨‍👩‍👧‍👦 🏳️‍🌈 🇺🇸 ❤️‍🔥 ✨".repeat(40);
+    const encoded = await encodeV2({ mime: "text/plain", bytes: new TextEncoder().encode(text), level: "max" });
+    const decoded = await decodeAny(encoded);
+    expect(decoded.status).toBe("ok");
+    if (decoded.status === "ok") expect(decoded.text).toBe(text);
+  });
+  it("round-trips emoji through legacy v1 links", async () => {
+    const text = "😀 🫠 🧑🏽‍💻 👩‍👩‍👧‍👦 🇺🇳".repeat(12);
+    const decoded = await decodeAny(encodePayload("text/plain", text));
+    expect(decoded.status).toBe("ok");
+    if (decoded.status === "ok") expect(decoded.text).toBe(text);
+  });
 });

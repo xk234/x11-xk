@@ -225,7 +225,7 @@ function Studio() {
       const content = largeFile ?? new Blob([sourceBytes as BlobPart]);
       const contentSize = content.size;
       const fingerprint = largeFile ? [largeFile.name, largeFile.size, largeFile.lastModified, mime].join(":") : Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer))).map((v) => v.toString(16).padStart(2, "0")).join("");
-      type Session = { id: string; uploadId: string; mime: string; size: number; name: string; fingerprint: string; parts: { partNumber: number; etag: string }[] };
+      type Session = { id: string; uploadId: string; mime: string; size: number; name: string; fingerprint: string; parts: { partNumber: number; etag: string; sha256: string }[] };
       let session = JSON.parse(localStorage.getItem(sessionKey) || "null") as Session | null;
       if (!session || session.fingerprint !== fingerprint || session.mime !== mime || session.size !== contentSize) {
         const start = await fetch(base + "r?multipart=start", { method: "POST", headers: { "Content-Type": "application/json", "X-X11-Upload-Key": uploadKey }, body: JSON.stringify({ mime, name: binaryName || "x11-resource" }) });
@@ -241,10 +241,14 @@ function Studio() {
         const startOffset = (partNumber - 1) * partSize;
         const endOffset = Math.min(contentSize, startOffset + partSize);
         if (!completed.has(partNumber)) {
-          const partResponse = await fetch(base + "r?multipart=part&id=" + session.id + "&uploadId=" + encodeURIComponent(session.uploadId) + "&partNumber=" + partNumber, { method: "POST", headers: { "X-X11-Upload-Key": uploadKey, "Content-Type": "application/octet-stream" }, body: blob.slice(startOffset, endOffset) });
-          const part = await partResponse.json() as { partNumber?: number; etag?: string };
-          if (!partResponse.ok || !part.etag) throw new Error("Upload part " + partNumber + " failed (HTTP " + partResponse.status + ")");
-          session.parts.push({ partNumber, etag: part.etag });
+          const partBlob = blob.slice(startOffset, endOffset);
+          const partBytes = await partBlob.arrayBuffer();
+          const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", partBytes));
+          const sha256 = Array.from(digest).map((v) => v.toString(16).padStart(2, "0")).join("");
+          const partResponse = await fetch(base + "r?multipart=part&id=" + session.id + "&uploadId=" + encodeURIComponent(session.uploadId) + "&partNumber=" + partNumber, { method: "POST", headers: { "X-X11-Upload-Key": uploadKey, "X-X11-SHA256": sha256, "Content-Type": "application/octet-stream" }, body: partBytes });
+          const part = await partResponse.json() as { partNumber?: number; etag?: string; sha256?: string };
+          if (!partResponse.ok || !part.etag || part.sha256 !== sha256) throw new Error("Upload part " + partNumber + " failed its integrity check (HTTP " + partResponse.status + ")");
+          session.parts.push({ partNumber, etag: part.etag, sha256 });
           localStorage.setItem(sessionKey, JSON.stringify(session));
         }
         setUploadProgress(Math.round(endOffset / contentSize * 100));

@@ -363,7 +363,7 @@ function Studio() {
 
           <Section title="Appearance">
             <label className="mb-2 block text-xs text-muted-foreground">Glowing theme</label>
-            <select value={theme} onChange={(e) => setTheme(e.target.value)} className="h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="crimson">Crimson</option><option value="violet">Violet</option><option value="cyan">Electric cyan</option><option value="amber">Amber</option></select>
+            <select value={theme} onChange={(e) => setTheme(e.target.value)} className="h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="crimson">Crimson glass</option><option value="violet">Ultraviolet</option><option value="cyan">Neon cyan</option><option value="amber">Solar amber</option><option value="emerald">Emerald glass</option><option value="ice">Arctic ice</option><option value="sunset">Afterglow</option></select>
           </Section>
 
           <Section title="Compression 2.0">

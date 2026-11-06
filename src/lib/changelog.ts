@@ -42,9 +42,15 @@ export const CHANGELOG: { version: string; date: string; title: string; items: s
 
 export const TODO: { text: string; done: boolean }[] = [
   { text: "Compression 2.0 for large files", done: true },
-  { text: "Add more codec engines after Ultra; benchmark Brotli, Zstandard, LZMA2, Zopfli, BZip2 and PPMd WASM builds", done: false },
+  { text: "Add Brotli, Zstandard, LZMA2, Zopfli, BZip2, PPMd and LZHAM local WASM codecs with backward-compatible codec IDs", done: false },
+  { text: "Add parser-based HTML, CSS and JavaScript minifiers; safely remove comments without corrupting literals or conditional syntax", done: false },
+  { text: "Add text/binary format-specific optimization controls and a dynamic rewrite-combination search", done: false },
+  { text: "Add Pyodide and MicroPython runtime packs with worker, memory, timeout and filesystem settings", done: false },
+  { text: "Add Clang/LLVM WASM compilation and WASI runtime support for C/C++ projects", done: false },
+  { text: "Add optional Lua, Ruby, PHP, SQLite, Java/.NET and game-engine WASM runtime packs", done: false },
+  { text: "Add upload-backed short raw URLs for large assets; query-string raw URLs are limited by URL length", done: false },
   { text: "Add an advanced compression toggles panel with parser-grade HTML/CSS/JS/SVG rewrites and dynamic best-combination search", done: false },
-  { text: "Raw resource mode for third-party image / media fetches using a CORS-enabled Pages Function", done: true },
+  { text: "Raw resource mode for third-party image / media fetches using a CORS-enabled Pages Function at /r?data=", done: true },
   { text: "Password-protected links", done: true },
   { text: "Video / audio / any file support", done: true },
   { text: "Iframe embed builder", done: true },

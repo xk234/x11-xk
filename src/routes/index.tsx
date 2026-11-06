@@ -156,7 +156,7 @@ function Studio() {
       localStorage.setItem(HIST_KEY, JSON.stringify(next));
       return next;
     });
-  }, [url, mime, previewCode]);
+  }, [url, mime, previewCode, binaryName]);
 
   const copy = useCallback(async () => {
     if (!url) { toast.error("Nothing to share yet — write something first"); return; }
@@ -172,12 +172,13 @@ function Studio() {
   }, [url, remember]);
 
   const download = () => {
-    if (!code) return;
-    const ext = mime.includes("html") ? "html" : mime.includes("svg") ? "svg" : mime.includes("json") ? "json" : mime.includes("css") ? "css" : mime.includes("javascript") ? "js" : "txt";
+    if (!sourceBytes.length) return;
+    const ext = mime.includes("html") ? "html" : mime.includes("svg") ? "svg" : mime.includes("json") ? "json" : mime.includes("css") ? "css" : mime.includes("javascript") ? "js" : "bin";
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([code], { type: mime }));
-    a.download = `x11-export.${ext}`;
+    a.href = URL.createObjectURL(new Blob([sourceBytes], { type: mime }));
+    a.download = binaryName || `x11-export.${ext}`;
     a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   const loadFile = async (f: File) => {
@@ -420,7 +421,7 @@ function Studio() {
         </aside>
       </div>
 
-      {urlToolOpen && <UrlToolDialog onClose={() => setUrlToolOpen(false)} onEmbed={(html) => { setCode(html); setMime("text/html"); setLang("html"); }} onFetched={({ mime: fetchedMime, bytes }) => { const text = new TextDecoder().decode(bytes); setCode(text); setMime(fetchedMime); setLang(guessLang(fetchedMime)); }} />}
+      {urlToolOpen && <UrlToolDialog onClose={() => setUrlToolOpen(false)} onEmbed={(html) => { setBinaryData(null); setBinaryName("embed.html"); setCode(html); setMime("text/html"); setLang("html"); }} onFetched={({ name, mime: fetchedMime, bytes }) => { setMime(fetchedMime); setBinaryName(name); if (/^text\\//i.test(fetchedMime) || /json|javascript|xml|svg|yaml/i.test(fetchedMime)) { setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(guessLang(fetchedMime)); } else { setCode(""); setBinaryData(bytes); setLang("plaintext"); } }} />}
       {infoOpen && <InfoDialog onClose={() => setInfoOpen(false)} />}
 
       {dragging && (

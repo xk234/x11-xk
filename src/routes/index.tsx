@@ -222,17 +222,18 @@ function Studio() {
     setUploadProgress(0);
     const sessionKey = "x11:r2-upload-session";
     const partSize = 8 * 1024 * 1024;
+    const uploadMime = (/^text\\//i.test(mime) || /json|javascript|xml|svg|yaml|typescript/i.test(mime)) ? mime + "; charset=" + textEncoding : mime;
     try {
       const content = largeFile ?? new Blob([sourceBytes as BlobPart]);
       const contentSize = content.size;
-      const fingerprint = largeFile ? [largeFile.name, largeFile.size, largeFile.lastModified, mime].join(":") : Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer))).map((v) => v.toString(16).padStart(2, "0")).join("");
+      const fingerprint = largeFile ? [largeFile.name, largeFile.size, largeFile.lastModified, mime ].join(":") : Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer))).map((v) => v.toString(16).padStart(2, "0")).join("");
       type Session = { id: string; uploadId: string; mime: string; size: number; name: string; fingerprint: string; parts: { partNumber: number; etag: string; sha256: string }[] };
       let session = JSON.parse(localStorage.getItem(sessionKey) || "null") as Session | null;
-      if (!session || session.fingerprint !== fingerprint || session.mime !== mime || session.size !== contentSize) {
-        const start = await fetch(base + "r?multipart=start", { method: "POST", headers: { "Content-Type": "application/json", "X-X11-Upload-Key": uploadKey }, body: JSON.stringify({ mime, name: binaryName || "x11-resource" }) });
+      if (!session || session.fingerprint !== fingerprint || session.mime !== uploadMime || session.size !== contentSize) {
+        const start = await fetch(base + "r?multipart=start", { method: "POST", headers: { "Content-Type": "application/json", "X-X11-Upload-Key": uploadKey }, body: JSON.stringify({ mime: uploadMime, name: binaryName || "x11-resource" }) });
         const created = await start.json() as { id?: string; uploadId?: string };
         if (!start.ok || !created.id || !created.uploadId) throw new Error("Could not start multipart upload (HTTP " + start.status + ")");
-        session = { id: created.id, uploadId: created.uploadId, mime, size: contentSize, name: binaryName || "x11-resource", fingerprint, parts: [] };
+        session = { id: created.id, uploadId: created.uploadId, mime: uploadMime, size: contentSize, name: binaryName || "x11-resource", fingerprint, parts: [] };
         localStorage.setItem(sessionKey, JSON.stringify(session));
       }
       const blob = content;

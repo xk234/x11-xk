@@ -37,7 +37,7 @@ Record source bytes, compressed bytes, final base64url characters, encode/decode
 
 ## Current implementation boundary
 
-Current v2 is a single-file container using fflate Deflate and base64url. Fast / Max / Ultra / Insane / Dynamic compare the currently available Deflate and browser-native gzip/deflate candidates. Parser-based HTML, CSS, JavaScript/TypeScript and JSON rewrite passes are now wired as opt-in transformations. Brotli/Zstandard/LZMA and other specialized codecs are still not installed. Multi-file static project packaging, Brotli/Zstandard/LZMA WASM, cross-file dictionaries, chunking, and full project reconstruction are roadmap items, not shipped features.
+Current v2 is a single-file container using fflate Deflate and base64url. Fast / Max / Ultra / Insane / Dynamic compare the currently available Deflate and browser-native gzip/deflate candidates. Parser-based HTML, CSS, JavaScript/TypeScript and JSON rewrite passes are wired as opt-in transformations. Charset metadata now supports UTF-8, UTF-16LE/BE, Windows-1252, ISO-8859-1 and US-ASCII. Large local files over 20 MiB are staged as File objects and can be streamed through 8 MiB R2 multipart chunks with per-chunk SHA-256 checks and local resume state. Brotli/Zstandard/LZMA and other specialized codecs, runtime packs, project bundle reconstruction and P2P are still not implemented.
 
 
 ## Expanded codec ladder (implementation targets)

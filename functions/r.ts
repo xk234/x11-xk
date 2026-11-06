@@ -64,13 +64,7 @@ async function unpack(payload: string): Promise<{ mime: string; bytes: Uint8Arra
 function validMime(input: string): string | null {
   const parts = input.split(";");
   const mime = parts[0].toLowerCase().trim();
-  if (!/^[a-z0-9!#function validMime(input: string): string | null {
-  const mime = input.toLowerCase().split(";")[0].trim();
-  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mime) ? mime : null;
-}^_.+-]+\\/[a-z0-9!#function validMime(input: string): string | null {
-  const mime = input.toLowerCase().split(";")[0].trim();
-  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mime) ? mime : null;
-}^_.+-]+$/.test(mime)) return null;
+  if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mime)) return null;
   const charset = parts.slice(1).map((part) => part.trim()).find((part) => /^charset=/i.test(part));
   if (!charset) return mime;
   const value = charset.slice(charset.indexOf("=") + 1).replace(/^["\']|["\']$/g, "").toLowerCase();

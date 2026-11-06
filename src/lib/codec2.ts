@@ -137,10 +137,17 @@ export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOpt
       return strToU8(serializeHtml(document));
     }
     if (mime.includes("svg")) {
-      let text = source;
-      if (options.svgMetadata) text = text.replace(/<!--[\s\S]*?-->/g, "").replace(/<metadata\b[^>]*>[\s\S]*?<\/metadata>/gi, "");
-      if (options.htmlWhitespace) text = text.replace(/>\s+</g, "><").trim();
-      return strToU8(text);
+      if (typeof DOMParser === "undefined" || typeof XMLSerializer === "undefined") return bytes;
+      const document = new DOMParser().parseFromString(source, "image/svg+xml");
+      if (document.getElementsByTagName("parsererror").length) return bytes;
+      if (options.svgMetadata) {
+        const walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
+        const comments: Comment[] = [];
+        while (walker.nextNode()) comments.push(walker.currentNode as Comment);
+        for (const comment of comments) comment.parentNode?.removeChild(comment);
+        document.querySelectorAll("metadata").forEach((node) => node.remove());
+      }
+      return strToU8(new XMLSerializer().serializeToString(document));
     }
     return bytes;
   } catch {

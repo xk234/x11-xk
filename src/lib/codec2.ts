@@ -67,7 +67,10 @@ async function compress(body: Uint8Array, level: Level): Promise<{ bytes: Uint8A
     const memories = level === "ultra" ? [9, 10, 11, 12] : [8, 9, 10, 11, 12];
     for (const l of levels) for (const mem of memories) add(deflateSync(body, { level: l as 7 | 8 | 9, mem: mem as 8 | 9 | 10 | 11 | 12 }));
   }
-  if (level === "dynamic" || level === "insane") {
+  // Native gzip/deflate can outperform fflate on Unicode-heavy text (emoji,
+  // CJK, combining marks) and repetitive binary data. Compare real byte sizes.
+  // Keep "fast" lightweight; all higher presets test both browser stream codecs.
+  if (level !== "fast") {
     for (const format of ["gzip", "deflate"] as const) {
       try { add(await streamCompress(body, format), format === "gzip" ? 1 : 2); } catch { /* codec unavailable */ }
     }

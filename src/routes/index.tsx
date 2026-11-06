@@ -181,11 +181,14 @@ function Studio() {
   };
 
   const loadFile = async (f: File) => {
-    const text = await f.text();
+    const bytes = new Uint8Array(await f.arrayBuffer());
     const l = langFromFilename(f.name);
-    setCode(text);
-    setLang(l);
-    setMime(LANGS.find((x) => x.value === l)?.mime ?? (f.type || "text/plain"));
+    const detectedMime = LANGS.find((x) => x.value === l)?.mime ?? (f.type || "application/octet-stream");
+    setMime(detectedMime);
+    setBinaryName(f.name);
+    if (/^text\\//i.test(detectedMime) || /json|javascript|xml|svg|yaml/i.test(detectedMime)) {
+      setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(l);
+    } else { setBinaryData(bytes); setCode(""); setLang("plaintext"); }
     toast.success(`Loaded ${f.name}`);
   };
 
@@ -213,7 +216,7 @@ function Studio() {
     return () => window.removeEventListener("keydown", h);
   }, [copy, open]);
 
-  const previewable = mime.includes("html") || mime.includes("svg");
+  const previewable = !binaryData && (mime.includes("html") || mime.includes("svg"));
 
   return (
     <div
@@ -239,7 +242,7 @@ function Studio() {
         <div className="flex items-center gap-1.5">
           <div className="mr-1 hidden items-center gap-1 md:flex">
             {EXAMPLES.map((ex) => (
-              <Button key={ex.name} variant="ghost" size="sm" onClick={() => { setCode(ex.code); setLang(ex.lang); setMime(ex.mime); }}>
+              <Button key={ex.name} variant="ghost" size="sm" onClick={() => { setBinaryData(null); setBinaryName(""); setCode(ex.code); setLang(ex.lang); setMime(ex.mime); }}>
                 <Sparkles /> {ex.name}
               </Button>
             ))}
@@ -248,7 +251,7 @@ function Studio() {
           <Button variant="outline" size="sm" onClick={() => setUrlToolOpen(true)}>URL tools</Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}><Link2 /> Decode link</Button>
           <Button variant="ghost" size="icon" title="Update history and TODO" onClick={() => setInfoOpen(true)}>Info</Button>
-          <Button variant="ghost" size="icon" title="Clear" onClick={() => setCode("")}><Trash2 /></Button>
+          <Button variant="ghost" size="icon" title="Clear" onClick={() => { setCode(""); setBinaryData(null); setBinaryName(""); }}><Trash2 /></Button>
           <input ref={fileRef} type="file" hidden onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])} />
         </div>
       </header>
@@ -283,10 +286,11 @@ function Studio() {
             <div className="relative min-h-0 bg-card/40">
               {mounted && (
                 <Suspense fallback={null}>
-                  <CodeEditor value={code} language={lang} wordWrap={wrap} onChange={setCode} onMount={(ed) => { editorRef.current = ed; }} />
+                  <CodeEditor value={code} language={lang} wordWrap={wrap} onChange={(value) => { setBinaryData(null); setBinaryName(""); setCode(value); }} onMount={(ed) => { editorRef.current = ed; }} />
                 </Suspense>
               )}
-              {!code && (
+              {binaryData && <div className="absolute inset-x-4 top-4 rounded-xl border bg-card/90 p-4 text-sm"><strong>{binaryName || "Binary file"}</strong><p className="mt-1 text-muted-foreground">{mime} · {formatBytes(binaryData.length)} · raw bytes</p></div>}
+              {!code && !binaryData && (
                 <div className="pointer-events-none absolute inset-0 grid place-items-center">
                   <div className="text-center text-sm text-muted-foreground">
                     <p className="font-medium text-foreground">Paste or type code here</p>
@@ -350,7 +354,7 @@ function Studio() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button variant="hero" onClick={copy} disabled={!url}><Copy /> Copy</Button>
               <Button variant="outline" onClick={open} disabled={!url}><ExternalLink /> Open</Button>
-              <Button variant="outline" size="sm" onClick={download} disabled={!code}><Download /> Download</Button>
+              <Button variant="outline" size="sm" onClick={download} disabled={!sourceBytes.length}><Download /> Download</Button>
               <Button variant={showQr ? "secondary" : "outline"} size="sm" onClick={() => setShowQr(!showQr)} disabled={!url}><QrCode /> QR code</Button>
             </div>
             {showQr && url && (

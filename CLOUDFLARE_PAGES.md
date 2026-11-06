@@ -33,13 +33,16 @@ All payload encoding, compression, password encryption, decoding, previews, and 
 
 The Studio can also copy a URL in this form:
 
-`https://x11-xk.pages.dev/r/PAYLOAD`
+`https://x11-xk.pages.dev/r?data=PAYLOAD`
 
 Cloudflare Pages detects the repository-level `functions/r/[[path]].ts` route and runs it at the edge. It decodes unencrypted x11 v1/v2 payloads and serves only allowlisted passive media, fonts and PDF/octet-stream resources with permissive CORS headers. This is intended for remote services that fetch an image URL, such as slide editors.
 
 Important differences:
 - A fragment URL such as `/#PAYLOAD` cannot be fetched by another service: URL fragments are never included in HTTP requests.
-- Raw mode rejects HTML, SVG, CSS, JavaScript and password-protected links.
-- Raw responses are capped at 25 MiB and payload paths at 1.5 million characters.
+- Raw mode rejects HTML, CSS, JavaScript and password-protected links; SVG is served with a restrictive sandbox CSP.
+- Raw responses are capped at 25 MiB and query payloads at 1.5 million characters (subject to browser, proxy and Cloudflare URL-size limits).
 - The Pages Function means deployment is no longer strictly static-only, although the editor and decoder remain static client code.
 - Keep the Pages project root at the repository root so Cloudflare can discover the `functions/` directory while publishing `dist/client`.
+
+
+The raw endpoint now uses a query parameter rather than a catch-all path segment. This avoids catch-all route parameter ambiguity, but does not remove URL length limits. Large binary resources need a future upload/storage-backed short-ID mode; a single static URL cannot safely carry arbitrarily large files.

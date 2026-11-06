@@ -74,7 +74,7 @@ export async function onRequest({ request }: { request: Request }) {
     if (safeMime === "image/svg+xml") headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:";
     const range = request.headers.get("Range");
     if (range) {
-      const match = /^bytes=(\\d*)-(\\d*)$/.exec(range.trim());
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
       if (!match || (!match[1] && !match[2])) return reply("Invalid byte range", 416, undefined, { "Content-Range": `bytes */${bytes.byteLength}` });
       let start = match[1] ? Number(match[1]) : Math.max(0, bytes.byteLength - Number(match[2]));
       let end = match[2] ? Number(match[2]) : bytes.byteLength - 1;

@@ -149,8 +149,8 @@ export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOpt
   }
 }
 
-export async function encodeV2(opts: {
-  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string; rewrite?: RewriteOptions;
+async function encodeV2Single(opts: {
+  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string; rewrite?: RewriteOptions; dynamicRewrite?: boolean;
 }): Promise<string> {
   const mimeB = strToU8(opts.mime);
   const metaB = strToU8(JSON.stringify(opts.meta ?? {}));
@@ -184,6 +184,33 @@ export async function encodeV2(opts: {
   const out = new Uint8Array(2 + payload.length);
   out[0] = 2; out[1] = flags; out.set(payload, 2);
   return "~" + b64urlEncode(out);
+}
+
+export async function encodeV2(opts: {
+  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string; rewrite?: RewriteOptions; dynamicRewrite?: boolean;
+}): Promise<string> {
+  if (!opts.dynamicRewrite || (opts.level ?? "max") !== "dynamic") return encodeV2Single(opts);
+  const enabled = Object.entries(opts.rewrite ?? {}).filter(([, value]) => value).map(([key]) => key as keyof RewriteOptions);
+  if (enabled.length === 0) return encodeV2Single(opts);
+  const candidates: RewriteOptions[] = [{}];
+  const all = Object.fromEntries(enabled.map((key) => [key, true])) as RewriteOptions;
+  candidates.push(all);
+  for (const key of enabled) {
+    candidates.push({ [key]: true } as RewriteOptions);
+    const without = { ...all };
+    delete without[key];
+    candidates.push(without);
+  }
+  const unique = new Map<string, RewriteOptions>();
+  for (const candidate of candidates) unique.set(enabled.map((key) => candidate[key] ? "1" : "0").join(""), candidate);
+  const ordered = [...unique.values()];
+  const bounded = opts.bytes.length > 2 * 1024 * 1024 ? ordered.slice(0, Math.min(4, ordered.length)) : ordered.slice(0, 20);
+  let best = "";
+  for (const rewrite of bounded) {
+    const candidate = await encodeV2Single({ ...opts, rewrite, dynamicRewrite: false });
+    if (!best || candidate.length < best.length) best = candidate;
+  }
+  return best;
 }
 
 export function isUrlSource(value: string): boolean {

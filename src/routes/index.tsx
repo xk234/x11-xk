@@ -243,14 +243,16 @@ function Studio() {
       for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
         const startOffset = (partNumber - 1) * partSize;
         const endOffset = Math.min(contentSize, startOffset + partSize);
-        if (!completed.has(partNumber)) {
-          const partBlob = blob.slice(startOffset, endOffset);
-          const partBytes = await partBlob.arrayBuffer();
-          const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", partBytes));
-          const sha256 = Array.from(digest).map((v) => v.toString(16).padStart(2, "0")).join("");
+        const partBlob = blob.slice(startOffset, endOffset);
+        const partBytes = await partBlob.arrayBuffer();
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", partBytes));
+        const sha256 = Array.from(digest).map((v) => v.toString(16).padStart(2, "0")).join("");
+        const previous = session.parts.find((part) => part.partNumber === partNumber);
+        if (!completed.has(partNumber) || previous?.sha256 !== sha256) {
           const partResponse = await fetch(base + "r?multipart=part&id=" + session.id + "&uploadId=" + encodeURIComponent(session.uploadId) + "&partNumber=" + partNumber, { method: "POST", headers: { "X-X11-Upload-Key": uploadKey, "X-X11-SHA256": sha256, "Content-Type": "application/octet-stream" }, body: partBytes });
           const part = await partResponse.json() as { partNumber?: number; etag?: string; sha256?: string };
           if (!partResponse.ok || !part.etag || part.sha256 !== sha256) throw new Error("Upload part " + partNumber + " failed its integrity check (HTTP " + partResponse.status + ")");
+          session.parts = session.parts.filter((item) => item.partNumber !== partNumber);
           session.parts.push({ partNumber, etag: part.etag, sha256 });
           localStorage.setItem(sessionKey, JSON.stringify(session));
         }

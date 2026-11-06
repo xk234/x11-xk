@@ -124,7 +124,7 @@ async function handleMultipart(request: Request, env: Env, url: URL): Promise<Re
     if (!mime) return response("Invalid Content-Type MIME value.", 415);
     const id = crypto.randomUUID().replace(/-/g, "");
     const name = String(input.name || "shared-resource").replace(/[\\r\\n"]/g, "_").slice(0, 180);
-    const upload = env.X11_R2.createMultipartUpload(id, {
+    const upload = env.X11_R2.createMultipartUpload("x11/" + id, {
       httpMetadata: { contentType: mime, contentDisposition: "inline" },
       customMetadata: { name, created: new Date().toISOString() },
     });
@@ -133,7 +133,7 @@ async function handleMultipart(request: Request, env: Env, url: URL): Promise<Re
   const id = url.searchParams.get("id") || "";
   const uploadId = url.searchParams.get("uploadId") || "";
   if (!/^[a-f0-9]{32}$/.test(id) || !uploadId) return response("Invalid multipart session.", 400);
-  const upload = env.X11_R2.resumeMultipartUpload(id, uploadId);
+  const upload = env.X11_R2.resumeMultipartUpload("x11/" + id, uploadId);
   if (action === "part") {
     const partNumber = Number(url.searchParams.get("partNumber"));
     if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000 || !request.body) return response("Invalid multipart part.", 400);
@@ -180,7 +180,7 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID().replace(/-/g, "");
   const name = (request.headers.get("X-X11-Name") || "shared-resource").replace(/[\r\n"]/g, "_").slice(0, 180);
   try {
-    await env.X11_R2.put(id, request.body, {
+    await env.X11_R2.put("x11/" + id, request.body, {
       httpMetadata: { contentType: mime, contentDisposition: "inline" },
       customMetadata: { name, created: new Date().toISOString() },
     });
@@ -193,13 +193,13 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
 async function handleStored(request: Request, env: Env, id: string): Promise<Response> {
   if (!env.X11_R2) return response("R2 storage is not configured.", 503);
   if (!/^[a-f0-9]{32}$/.test(id)) return response("Invalid resource ID.", 400);
-  const object = await env.X11_R2.get(id);
+  const object = await env.X11_R2.get("x11/" + id);
   if (!object) return response("Resource not found.", 404);
   const mime = validMime(object.httpMetadata?.contentType || "application/octet-stream") || "application/octet-stream";
   const range = parseRange(request.headers.get("Range"), object.size);
   if (range === "invalid") return response("Requested range is not satisfiable.", 416, mime, { "Content-Range": `bytes */${object.size}` });
   if (range) {
-    const part = await env.X11_R2.get(id, { range: { offset: range.start, length: range.end - range.start + 1 } });
+    const part = await env.X11_R2.get("x11/" + id, { range: { offset: range.start, length: range.end - range.start + 1 } });
     if (!part?.body) return response("Stored range unavailable.", 502, mime);
     const headers = headersFor(mime);
     headers.set("Content-Length", String(range.end - range.start + 1));

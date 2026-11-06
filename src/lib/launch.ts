@@ -6,7 +6,7 @@ function htmlShell(innerUrl: string, title: string) {
 }
 
 export function createLaunchUrlFromBlob(content: Blob, mime: string): string {
-  const normalized = mime.toLowerCase().split(";")[0].trim() || "application/octet-stream";
+  const normalized = (mime.toLowerCase().split(";")[0] || "").trim() || "application/octet-stream";
   const innerUrl = URL.createObjectURL(content);
   if (ACTIVE_DOCUMENTS.has(normalized)) {
     return URL.createObjectURL(new Blob([htmlShell(innerUrl, "x11 isolated preview")], { type: "text/html" }));

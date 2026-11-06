@@ -154,3 +154,25 @@ These are candidate local libraries / WASM packs to evaluate, not all shipped de
 - Preserve original / lossless only / lossy allowed; max dimension, quality, chroma subsampling, metadata and animation toggles.
 - Per-file vs shared dictionary, cross-file deduplication, solid archive mode, chunk size and integrity checks.
 - Benchmark actual final URL length and decode cost; never choose a candidate just because its raw compressed stream is smaller.
+
+## P2P transfer architecture (planned)
+
+P2P is a transport subsystem, not another compression codec. The invite should contain a versioned session descriptor, not the file bytes. For an offline/no-signaling path, the sender creates an SDP offer after ICE gathering and shares it as an invite; the receiver creates an SDP answer and returns it out-of-band. This is naturally a two-step exchange, not a magic one-way invite. A WSS signaling service can automate offer/answer and trickle ICE, but must not relay file data.
+
+- WebRTC DataChannels carry file chunks and live-stream packets; use bounded chunks, bufferedAmountLowThreshold, ACK windows, pause/resume, and SHA-256 verification.
+- Default STUN candidates can include public Google STUN endpoints, with editable custom STUN/TURN lists. STUN only discovers candidates; symmetric NAT/firewalls may require TURN, which relays traffic and is not pure P2P.
+- Password-protected invites encrypt and authenticate the session descriptor; WebRTC already encrypts the channel in transit with DTLS. Never put a plaintext password in the invite URL.
+- Large-file transfer uses a manifest (name, MIME, byte length, chunk size, SHA-256), per-chunk sequence numbers and hashes, bounded memory, resumable chunk acknowledgements, and IndexedDB-backed local staging.
+- Live streams use a separate ordered/unordered channel policy and timestamped frames; video/audio capture and encoding remain opt-in and device-capability dependent.
+- A link may carry ICE server configuration, but embedding live ICE candidates can expose network metadata and makes links large. Show a privacy notice and allow relay-free mode explicitly.
+
+## Browser window bridge and cross-origin boundaries
+
+A postMessage bridge is supported only when both sides cooperate and validate event.origin, event.source, message type, and a per-session nonce. window.open(...).document.write(...) only works for a same-origin, script-created window before cross-origin navigation; it does not bypass CORS or the same-origin policy. For previews, use the existing sandboxed iframe with a narrow message protocol. For remote resource fetching, use a server-side proxy only for resources the operator is authorized to fetch, with destination allowlists, size/time limits, and SSRF protections. Never advertise this as a CORS bypass.
+
+## Codec container compatibility contract
+
+- v1 and v2 are immutable; decoders must continue to recognize them exactly.
+- New codec families belong in a new container version with a dedicated codec-ID byte and explicit flags, not by consuming the remaining v2 flag bits ambiguously.
+- Codec IDs are permanent once published. Unknown IDs return a clear unsupported-codec result; they must never be guessed or decoded as Deflate.
+- Each codec module is lazy-loaded and locally hosted. Benchmark encode/decode time, peak memory, final URL length, and round-trip hash on representative files before making it selectable.

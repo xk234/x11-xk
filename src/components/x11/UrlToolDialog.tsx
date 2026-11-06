@@ -2,8 +2,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { fetchRemote } from "@/lib/server.functions";
-import { b64urlDecode } from "@/lib/codec2";
 
 const ALLOW = ["fullscreen", "autoplay", "clipboard-read", "clipboard-write", "camera", "microphone", "geolocation", "display-capture", "encrypted-media", "picture-in-picture", "payment", "web-share", "gamepad", "midi", "usb", "xr-spatial-tracking"];
 const SANDBOX = ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-modals", "allow-downloads", "allow-top-navigation", "allow-pointer-lock", "allow-presentation", "allow-storage-access-by-user-activation"];
@@ -38,26 +36,26 @@ export function UrlToolDialog({ onClose, onFetched, onEmbed }: Props) {
   };
 
   const doFetch = async () => {
-    const u = normalized();
-    if (!u) { toast.error("Enter a valid URL"); return; }
+    const raw = url.trim();
+    let target: string | null = null;
+    if (/^blob:/i.test(raw)) target = raw;
+    else target = normalized();
+    if (!target) { toast.error("Enter a valid blob, http, or https URL"); return; }
     setBusy(true);
     try {
-      let mime = "", bytes: Uint8Array | null = null;
-      try {
-        const r = await fetch(u);
-        if (r.ok) { mime = (r.headers.get("content-type") || "").split(";")[0] ?? ""; bytes = new Uint8Array(await r.arrayBuffer()); }
-      } catch { /* CORS — fall back to server */ }
-      if (!bytes) {
-        const r = await fetchRemote({ data: { url: u } });
-        if (!r.ok) throw new Error(r.error);
-        mime = r.mime ?? "";
-        bytes = b64urlDecode(r.b64.replace(/\+/g, "-").replace(/\//g, "_"));
-      }
-      const name = new URL(u).pathname.split("/").pop() || new URL(u).hostname;
+      const r = await fetch(target);
+      if (!r.ok) throw new Error("The URL returned HTTP " + r.status);
+      const maxBytes = 50 * 1024 * 1024;
+      if (Number(r.headers.get("content-length") || 0) > maxBytes) throw new Error("File is larger than the 50 MB browser import limit");
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      if (bytes.byteLength > maxBytes) throw new Error("File is larger than the 50 MB browser import limit");
+      const mime = (r.headers.get("content-type") || "").split(";")[0] ?? "";
+      const parsed = new URL(target);
+      const name = parsed.pathname.split("/").pop() || parsed.hostname || "imported-file";
       onFetched({ name, mime: mime || "application/octet-stream", bytes });
       onClose();
     } catch (e) {
-      toast.error("Couldn't fetch that URL", { description: e instanceof Error ? e.message : undefined });
+      toast.error("Couldn't fetch that URL", { description: e instanceof Error ? e.message : "The browser may block cross-origin requests unless the source allows CORS." });
     } finally { setBusy(false); }
   };
 
@@ -102,7 +100,7 @@ ${t ? `  <title>${esc(t)}</title>\n` : ""}${favicon ? `  <link rel="icon" href="
         <p className="mt-3 text-sm text-muted-foreground">
           {tab === "embed"
             ? "Builds a full-screen page that shows the website inside a frame. Some sites block being framed."
-            : "Downloads the page or file and puts its contents into the link (up to 8 MB)."}
+            : "Fetches in your browser (up to 50 MB). Cross-origin sources must allow CORS; this static version has no proxy."}
         </p>
         <input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com"
           onKeyDown={(e) => e.key === "Enter" && (tab === "embed" ? doEmbed() : doFetch())}

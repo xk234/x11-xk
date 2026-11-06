@@ -94,6 +94,7 @@ function Studio() {
   const [instant, setInstant] = useState(false);
   const [urlToolOpen, setUrlToolOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [theme, setTheme] = useState("crimson");
   const [binaryData, setBinaryData] = useState<Uint8Array | null>(null);
   const [binaryName, setBinaryName] = useState("");
   const [imageMaxSide, setImageMaxSide] = useState(4096);
@@ -102,8 +103,10 @@ function Studio() {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // restore draft + history
+  // restore draft, history, and theme
   useEffect(() => {
+    const savedTheme = localStorage.getItem("x11:theme");
+    if (savedTheme) setTheme(savedTheme);
     setMounted(true);
     try {
       const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
@@ -118,6 +121,11 @@ function Studio() {
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("x11:theme", theme);
+  }, [theme]);
 
   // autosave + debounced preview
   useEffect(() => {
@@ -351,6 +359,11 @@ function Studio() {
             {!MIMES.includes(mime) && (
               <input value={mime} onChange={(e) => setMime(e.target.value)} className="mt-2 h-9 w-full rounded-md border bg-secondary px-2 font-mono-ui text-xs outline-none focus:ring-2 focus:ring-ring" />
             )}
+          </Section>
+
+          <Section title="Appearance">
+            <label className="mb-2 block text-xs text-muted-foreground">Glowing theme</label>
+            <select value={theme} onChange={(e) => setTheme(e.target.value)} className="h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="crimson">Crimson</option><option value="violet">Violet</option><option value="cyan">Electric cyan</option><option value="amber">Amber</option></select>
           </Section>
 
           <Section title="Compression 2.0">

@@ -10,7 +10,7 @@ export const CHANGELOG: { version: string; date: string; title: string; items: s
       "Password lock: AES-256 encryption with a password, decrypted only in the viewer's browser",
       "Instant run: shared links skip the countdown screen and open right away",
       "Fetch a page or file from any URL, or build an iframe embed with tab title, allow= rules and sandbox options",
-      "Site visits bar with anonymous hashed device / IP / network metrics",
+      "Local-only usage counter (no IP or network collection)",
       "New Liquid Glass look with four glowing themes",
     ],
   },

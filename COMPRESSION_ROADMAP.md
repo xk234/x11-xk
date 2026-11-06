@@ -79,4 +79,43 @@ Planned parser-grade stages:
 
 ## Raw resource mode
 
-The Pages Function at /r/<payload> decodes an unencrypted x11 payload and serves a limited allowlist of passive media/document types with CORS headers. It is intended for remote consumers such as slide editors that fetch an image URL. The fragment form /#<payload> is client-side only: browsers never send URL fragments in HTTP requests, so it cannot be used as a server-fetchable asset URL. Raw mode currently rejects HTML, CSS, JavaScript and password-protected payloads; SVG is served with a restrictive sandbox CSP, and caps decoded resources at 25 MiB. This endpoint means the project is no longer strictly static-only; the rest of the Studio remains static, while this one Pages Function supplies raw bytes.
+The Pages Function at /r?data=<payload> decodes an unencrypted x11 payload and serves a limited allowlist of passive media/document types with CORS headers. It is intended for remote consumers such as slide editors that fetch an image URL. The fragment form /#<payload> is client-side only: browsers never send URL fragments in HTTP requests, so it cannot be used as a server-fetchable asset URL. Raw mode currently rejects HTML, CSS, JavaScript and password-protected payloads; SVG is served with a restrictive sandbox CSP, and caps decoded resources at 25 MiB. This endpoint means the project is no longer strictly static-only; the rest of the Studio remains static, while this one Pages Function supplies raw bytes.
+
+
+## Runtime and execution roadmap
+
+Execution is a separate subsystem from compression. A file being compressible does not mean the browser can execute it. Each runtime needs a local, version-pinned WASM build, a worker boundary, explicit resource limits, and a virtual filesystem.
+
+### Web-native languages
+- HTML, CSS, JavaScript, SVG, JSON: native browser parsing/rendering; JavaScript runs in a restricted preview worker/frame.
+- TypeScript, JSX/TSX: compile with a locally bundled browser compiler (planned).
+- WebAssembly modules: instantiate in a Worker with explicit imports and memory/fuel limits.
+
+### WASM runtime targets
+- Python: Pyodide (CPython + packages), plus a smaller MicroPython option for low-memory devices.
+- C/C++: Clang/LLVM WASM toolchain, with WASI SDK output executed by a WASI runtime.
+- Rust: rustc-to-wasm toolchain is too large for routine in-browser compilation; support running precompiled WASM/WASI artifacts first.
+- Lua: Fengari (JS) or a Lua WASM/WASI build.
+- Ruby: ruby.wasm.
+- PHP: php-wasm.
+- SQLite/SQL: SQLite WASM.
+- Java: TeaVM-compiled apps or a WASM JVM experiment; full JVM is a heavyweight optional target.
+- .NET: dotnet WASM runtime as an optional high-memory target.
+- Go: precompiled WASM modules and WASI support; in-browser compilation is a separate heavyweight toolchain.
+- Shell: WASI shell/coreutils bundle, not unrestricted host shell access.
+- Game engines: Love2D/Lua WASM, Godot Web export, raylib/SDL WASM, and custom WebGPU/WebGL targets with graceful fallback.
+
+### Runtime configuration controls
+- Runtime selector and per-runtime version/build.
+- Lazy-load runtime only after the user selects it; cache verified assets locally.
+- Worker execution, memory ceiling, execution timeout/fuel budget, filesystem quota, network permission, and package allowlist.
+- Low-memory preset for Chromebooks; balanced preset; high-memory preset.
+- Console/stdout/stderr, virtual files, import/export, and reproducible project manifest.
+- No arbitrary host filesystem, browser profile, or unrestricted network access. Network access is opt-in and origin-scoped.
+
+### Packaging and offline rules
+- All runtime JS/WASM assets must be self-hosted and version-pinned for offline use.
+- Do not load toolchains from a CDN at runtime.
+- Separate "run existing artifact" from "compile source"; compilation toolchains are much larger.
+- Make optional runtime packs downloadable/cacheable individually instead of shipping every compiler in the initial page bundle.
+- Provide explicit estimated download size and memory requirements before enabling a runtime.

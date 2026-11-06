@@ -434,12 +434,23 @@ function Studio() {
                   <span className="size-2 rounded-full bg-success" /> Live preview
                 </div>
                 {previewable ? (
-                  <iframe
-                    title="Live preview"
-                    sandbox="allow-scripts allow-modals allow-forms"
-                    srcDoc={previewDocument(previewCode, mime)}
-                    className="min-h-0 w-full flex-1 bg-background"
-                  />
+                  <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-5 text-center">
+                    <div className="max-w-sm text-sm font-medium">No iframe preview</div>
+                    <p className="max-w-sm text-xs text-muted-foreground">
+                      X11 launches HTML, SVG, CSS and JavaScript as a top-level Blob document instead of embedding it in an iframe.
+                      The launched page shares this site's origin, so only run content you trust.
+                    </p>
+                    <Button
+                      variant="hero"
+                      onClick={() => {
+                        const source = previewDocument(previewCode, mime);
+                        const launchUrl = createLaunchUrl(encodeText(source, "utf-8"), "text/html");
+                        window.open(launchUrl, "_blank", "noopener,noreferrer");
+                      }}
+                    >
+                      <ExternalLink /> Launch preview
+                    </Button>
+                  </div>
                 ) : (
                   <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-4 font-mono-ui text-xs text-muted-foreground">
                     {previewCode || "Nothing to show yet."}

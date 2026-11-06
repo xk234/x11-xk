@@ -131,8 +131,8 @@ function Studio() {
   const [binaryName, setBinaryName] = useState("");
   const [imageOptimize, setImageOptimize] = useState(true);
   const [imageMaxSide, setImageMaxSide] = useState(4096);
-  const [imageQuality, setImageQuality] = useState(0.86);
-  const [imageFormat, setImageFormat] = useState<"original" | "image/webp" | "image/jpeg" | "image/png">("original");
+  const [imageQuality, setImageQuality] = useState(0.68);
+  const [imageFormat, setImageFormat] = useState<"auto" | "original" | "image/webp" | "image/avif" | "image/jpeg" | "image/png">("auto");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -537,11 +537,11 @@ function Studio() {
             </div>
             <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={imageOptimize} onChange={(e) => setImageOptimize(e.target.checked)} /> Re-encode raster images on import</label>
             <label className="mt-3 block text-xs text-muted-foreground">Image maximum dimension (next import)</label>
-            <select value={imageMaxSide} onChange={(e) => setImageMaxSide(Number(e.target.value))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value={1024}>1024 px</option><option value={2048}>2048 px</option><option value={4096}>4096 px</option><option value={8192}>8192 px</option></select>
-            <label className="mt-3 block text-xs text-muted-foreground">Image quality: {Math.round(imageQuality * 100)}%</label>
-            <input type="range" min="0.2" max="1" step="0.05" value={imageQuality} onChange={(e) => setImageQuality(Number(e.target.value))} className="w-full" />
+            <select value={imageMaxSide} onChange={(e) => setImageMaxSide(Number(e.target.value))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value={1024}>1024 px</option><option value={2048}>2048 px</option><option value={4096}>4096 px</option><option value={8192}>8192 px</option><option value={16384}>16384 px</option></select>
+            <label className="mt-3 block text-xs text-muted-foreground">Compression quality: {Math.round(imageQuality * 100)}%</label>
+            <input type="range" min="0.2" max="0.95" step="0.02" value={imageQuality} onChange={(e) => setImageQuality(Number(e.target.value))} className="w-full" />
             <label className="mt-3 block text-xs text-muted-foreground">Image output format</label>
-            <select value={imageFormat} onChange={(e) => setImageFormat(e.target.value as typeof imageFormat)} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="original">Keep original format</option><option value="image/webp">WebP</option><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option></select>
+            <select value={imageFormat} onChange={(e) => setImageFormat(e.target.value as typeof imageFormat)} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="auto">Auto — smallest AVIF/WebP</option><option value="original">Re-encode original format</option><option value="image/avif">AVIF</option><option value="image/webp">WebP</option><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option></select>
             <label className="mt-3 block text-xs text-muted-foreground">Optional password encryption</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set a link password" className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-xs" />
             <p className="mt-2 text-[10px] text-muted-foreground">AES-GCM encryption runs locally. Share the password separately.</p>

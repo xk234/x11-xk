@@ -14,9 +14,18 @@ interface StoredObject {
   httpMetadata?: { contentType?: string; contentDisposition?: string };
   writeHttpMetadata(headers: Headers): void;
 }
+interface MultipartPart { partNumber: number; etag: string }
+interface R2MultipartUploadLike {
+  uploadId: string;
+  uploadPart(partNumber: number, value: ReadableStream<Uint8Array> | ArrayBuffer): Promise<{ etag: string }>;
+  complete(parts: MultipartPart[]): Promise<unknown>;
+  abort(): Promise<void>;
+}
 interface R2BucketLike {
   put(key: string, value: ReadableStream<Uint8Array> | ArrayBuffer, options?: { httpMetadata?: { contentType?: string; contentDisposition?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
   get(key: string, options?: { range?: { offset: number; length: number } }): Promise<StoredObject | null>;
+  createMultipartUpload(key: string, options?: { httpMetadata?: { contentType?: string; contentDisposition?: string }; customMetadata?: Record<string, string> }): R2MultipartUploadLike;
+  resumeMultipartUpload(key: string, uploadId: string): R2MultipartUploadLike;
 }
 interface Env { X11_R2?: R2BucketLike; X11_UPLOAD_KEY?: string }
 
@@ -104,6 +113,55 @@ async function authorized(request: Request, env: Env) {
   return diff === 0;
 }
 
+async function handleMultipart(request: Request, env: Env, url: URL): Promise<Response> {
+  if (!env.X11_R2) return response("R2 storage is not configured.", 503);
+  if (!env.X11_UPLOAD_KEY) return response("Uploads are disabled until X11_UPLOAD_KEY is configured.", 503);
+  if (!(await authorized(request, env))) return response("Upload key required or incorrect.", 401);
+  const action = url.searchParams.get("multipart");
+  if (action === "start") {
+    const input = await request.json() as { mime?: string; name?: string };
+    const mime = validMime(input.mime || "application/octet-stream");
+    if (!mime) return response("Invalid Content-Type MIME value.", 415);
+    const id = crypto.randomUUID().replace(/-/g, "");
+    const name = String(input.name || "shared-resource").replace(/[\\r\\n"]/g, "_").slice(0, 180);
+    const upload = env.X11_R2.createMultipartUpload(id, {
+      httpMetadata: { contentType: mime, contentDisposition: "inline" },
+      customMetadata: { name, created: new Date().toISOString() },
+    });
+    return response(JSON.stringify({ ok: true, id, uploadId: upload.uploadId }), 201, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+  }
+  const id = url.searchParams.get("id") || "";
+  const uploadId = url.searchParams.get("uploadId") || "";
+  if (!/^[a-f0-9]{32}$/.test(id) || !uploadId) return response("Invalid multipart session.", 400);
+  const upload = env.X11_R2.resumeMultipartUpload(id, uploadId);
+  if (action === "part") {
+    const partNumber = Number(url.searchParams.get("partNumber"));
+    if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000 || !request.body) return response("Invalid multipart part.", 400);
+    try {
+      const part = await upload.uploadPart(partNumber, request.body);
+      return response(JSON.stringify({ ok: true, partNumber, etag: part.etag }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+    } catch (error) {
+      return response(error instanceof Error ? error.message : "Multipart part failed.", 502);
+    }
+  }
+  if (action === "complete") {
+    const input = await request.json() as { parts?: MultipartPart[] };
+    const parts = Array.isArray(input.parts) ? input.parts : [];
+    if (!parts.length || parts.some((part) => !Number.isInteger(part.partNumber) || part.partNumber < 1 || typeof part.etag !== "string")) return response("Invalid multipart completion manifest.", 400);
+    try {
+      await upload.complete(parts.sort((a, b) => a.partNumber - b.partNumber));
+      return response(JSON.stringify({ ok: true, id, url: new URL("/r?id=" + id, request.url).toString() }), 201, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+    } catch (error) {
+      return response(error instanceof Error ? error.message : "Multipart completion failed.", 502);
+    }
+  }
+  if (action === "abort") {
+    await upload.abort();
+    return response(JSON.stringify({ ok: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+  }
+  return response("Unknown multipart action.", 400);
+}
+
 async function handleUpload(request: Request, env: Env): Promise<Response> {
   if (!env.X11_R2) return response("R2 storage is not configured. Bind an R2 bucket as X11_R2.", 503);
   if (!env.X11_UPLOAD_KEY) return response("Uploads are disabled until X11_UPLOAD_KEY is configured.", 503);
@@ -157,11 +215,15 @@ async function handleStored(request: Request, env: Env, id: string): Promise<Res
 
 export async function onRequest({ request, env }: { request: Request; env: Env }) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: headersFor("text/plain; charset=utf-8") });
-  if (request.method === "POST") return handleUpload(request, env);
+  if (request.method === "POST") {
+    const url = new URL(request.url);
+    if (url.searchParams.has("multipart")) return handleMultipart(request, env, url);
+    return handleUpload(request, env);
+  }
   if (request.method !== "GET" && request.method !== "HEAD") return response("Method not allowed.", 405, undefined, { Allow: "GET, HEAD, POST, OPTIONS" });
   const url = new URL(request.url);
   if (url.searchParams.get("health") === "1") {
-    return response(JSON.stringify({ ok: true, endpoint: "/r", inlineMime: "any-valid-mime", upload: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, maxUploadBytes: MAX_UPLOAD_BYTES, range: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+    return response(JSON.stringify({ ok: true, endpoint: "/r", inlineMime: "any-valid-mime", upload: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, maxUploadBytes: MAX_UPLOAD_BYTES, multipart: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, range: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
   }
   const id = url.searchParams.get("id");
   if (id) return handleStored(request, env, id);

@@ -10,7 +10,7 @@ export const CHANGELOG: { version: string; date: string; title: string; items: s
       "Password lock: AES-256 encryption with a password, decrypted only in the viewer's browser",
       "Instant run: shared links skip the countdown screen and open right away",
       "Fetch a page or file from any URL, or build an iframe embed with tab title, allow= rules and sandbox options",
-      "Local-only usage counter (no IP or network collection)",
+      "Static mode: no server analytics or IP/network collection; recent history stays local",
       "New Liquid Glass look with four glowing themes",
     ],
   },
@@ -36,5 +36,5 @@ export const TODO: { text: string; done: boolean }[] = [
   { text: "Video re-encoding (shrink videos before sharing)", done: false },
   { text: "Multi-file bundles (several files in one link)", done: false },
   { text: "Mobile layout for the link panel", done: false },
-  { text: "Custom themes / your own accent color", done: false },
+  { text: "Custom themes / your own accent color", done: true },
 ];

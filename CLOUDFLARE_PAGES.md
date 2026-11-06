@@ -48,14 +48,14 @@ Inline limits remain finite: 1.5 million payload characters and 25 MiB decoded b
 4. Redeploy the Pages project so the binding and secret are available to the Function.
 5. Test `/r?health=1`; its JSON should report `upload: true` and `multipart: true`.
 
-The Studio uploads large local files in 8 MiB R2 multipart chunks. Each chunk is SHA-256 checked by the Function before it is accepted. Completed chunk ETags and the upload session are saved in localStorage so the same selected file can resume after a reload. The browser does not read a file larger than 20 MiB into a JavaScript byte array merely to stage it; it slices the original File into upload chunks.
+The Studio uploads large local files in 8 MiB R2 multipart chunks. Each chunk is SHA-256 checked by the Function before it is accepted. Completed chunk ETags and the upload session are saved in localStorage so the same selected file can resume after a reload. The browser does not read a file larger than 20 MiB into a JavaScript byte array merely to stage it; it slices the original File into upload chunks. R2 multipart sessions expire after seven days if left incomplete. With 8 MiB chunks and R2’s 10,000-part ceiling, the theoretical part-count ceiling is about 80 GiB, but Cloudflare plan request/time limits may impose a lower practical limit.
 
 ### Important storage and privacy behavior
 
 - Stored resource URLs are public to anyone who has the ID. The upload key authorizes writes; it does not encrypt or restrict reads.
 - Do not upload private or sensitive files to this public raw endpoint.
 - Anyone who knows the shared upload key can create uploads. Keep it private and rotate it if it is exposed.
-- R2 objects use the `x11/` prefix. Configure an R2 lifecycle rule to expire that prefix after your desired retention period (for example, 30 days); the app does not yet implement deletion or automatic expiry.
+- R2 objects use the `x11/` prefix. Configure an R2 lifecycle rule to expire that prefix after your desired retention period (for example, 30 days); the app does not yet implement deletion or automatic expiry. R2 automatically aborts incomplete multipart uploads after seven days.
 - Multipart upload avoids one giant request, but it is still subject to Cloudflare Pages request, execution and R2 limits. It is not unlimited storage or a peer-to-peer transport.
 - Password-protected x11 fragment links cannot be decoded by the raw endpoint. R2 raw uploads are public byte storage, not password-encrypted shares.
 

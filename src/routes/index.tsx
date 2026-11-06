@@ -13,7 +13,7 @@ import { DecodeScreen } from "@/components/x11/DecodeScreen";
 import { InfoDialog } from "@/components/x11/InfoDialog";
 import { UrlToolDialog } from "@/components/x11/UrlToolDialog";
 import { decodePayload, formatBytes, payloadFromUrl } from "@/lib/codec";
-import { encodeV2, processImage, type Level } from "@/lib/codec2";
+import { encodeV2, processImage, type Level, type RewriteOptions } from "@/lib/codec2";
 import { EXAMPLES, LANGS, MIMES, langFromFilename } from "@/lib/examples";
 
 const CodeEditor = lazy(() => import("@/components/x11/CodeEditor"));
@@ -104,6 +104,7 @@ function Studio() {
   const [dragging, setDragging] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [compression, setCompression] = useState<Level>("max");
+  const [rewrite, setRewrite] = useState<RewriteOptions>({});
   const [password, setPassword] = useState("");
   const [instant, setInstant] = useState(false);
   const [urlToolOpen, setUrlToolOpen] = useState(false);
@@ -157,11 +158,11 @@ function Studio() {
   useEffect(() => {
     let active = true;
     if (!sourceBytes.length) { setPayload(""); return; }
-    encodeV2({ mime, bytes: sourceBytes, meta: binaryName ? { name: binaryName } : {}, level: compression, instant, ...(password ? { password } : {}) })
+    encodeV2({ mime, bytes: sourceBytes, meta: binaryName ? { name: binaryName } : {}, level: compression, instant, rewrite, ...(password ? { password } : {}) })
       .then((value) => { if (active) setPayload(value); })
       .catch((error) => { console.error(error); if (active) setPayload(""); });
     return () => { active = false; };
-  }, [sourceBytes, mime, compression, instant, password, binaryName]);
+  }, [sourceBytes, mime, compression, instant, rewrite, password, binaryName]);
   const url = payload ? `${base}#${payload}` : "";
   const origBytes = sourceBytes.length;
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;
@@ -399,8 +400,24 @@ function Studio() {
 
           <Section title="Compression 2.0">
             <label className="mb-2 block text-xs text-muted-foreground">Compression strength</label>
-            <select value={compression} onChange={(e) => setCompression(e.target.value as Level)} className="h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="fast">Fast</option><option value="max">Max</option><option value="ultra">Ultra</option></select>
+            <select value={compression} onChange={(e) => setCompression(e.target.value as Level)} className="h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="fast">Fast</option><option value="max">Max</option><option value="ultra">Ultra</option><option value="insane">Insane · codec search</option><option value="dynamic">Dynamic · smallest candidate</option></select>
             <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={instant} onChange={(e) => setInstant(e.target.checked)} /> Instant run</label>
+            <div className="mt-4 border-t border-white/10 pt-3">
+              <div className="mb-2 text-xs font-semibold">Source shrinking · opt-in</div>
+              <p className="mb-2 text-[10px] text-muted-foreground">These rewrite source before compression. Some whitespace-sensitive documents may change; keep toggles off when exact bytes matter.</p>
+              {([
+                ["htmlComments", "Strip HTML comments"],
+                ["htmlWhitespace", "Collapse inter-tag whitespace"],
+                ["cssComments", "Strip CSS comments"],
+                ["cssWhitespace", "Compact CSS whitespace"],
+                ["svgMetadata", "Remove SVG comments / metadata"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="mt-2 flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={!!rewrite[key]} onChange={(e) => setRewrite((v) => ({ ...v, [key]: e.target.checked }))} />
+                  {label}
+                </label>
+              ))}
+            </div>
             <label className="mt-3 block text-xs text-muted-foreground">Image maximum dimension</label>
             <select value={imageMaxSide} onChange={(e) => setImageMaxSide(Number(e.target.value))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value={1024}>1024 px</option><option value={2048}>2048 px</option><option value={4096}>4096 px</option><option value={8192}>8192 px</option></select>
             <label className="mt-3 block text-xs text-muted-foreground">Image quality: {Math.round(imageQuality * 100)}%</label>
@@ -410,6 +427,7 @@ function Studio() {
             <label className="mt-3 block text-xs text-muted-foreground">Optional password encryption</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set a link password" className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-xs" />
             <p className="mt-2 text-[10px] text-muted-foreground">AES-GCM encryption runs locally. Share the password separately.</p>
+            <p className="mt-2 text-[10px] text-muted-foreground">Dynamic and Insane compare available browser codecs. Brotli, Zstandard, LZMA and parser-grade minifiers remain planned WASM additions.</p>
           </Section>
 
           <Section title="Your link">

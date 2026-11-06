@@ -411,9 +411,13 @@ function Studio() {
                   <li key={h.at} className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
                     <button
                       className="min-w-0 flex-1 text-left"
-                      onClick={() => {
-                        const d = decodePayload(payloadFromUrl(h.url));
-                        if (d) { setCode(d.content); setMime(d.mime); setLang(guessLang(d.mime)); }
+                      onClick={async () => {
+                        const d = await decodeAny(payloadFromUrl(h.url));
+                        if (d.status === "ok") {
+                          setMime(d.mime); setBinaryName(d.meta.name || "");
+                          if (d.text !== null) { setBinaryData(null); setCode(d.text); setLang(guessLang(d.mime)); }
+                          else { setCode(""); setBinaryData(d.bytes); setLang("plaintext"); }
+                        }
                       }}
                     >
                       <div className="truncate text-xs">{h.title || "Untitled"}</div>

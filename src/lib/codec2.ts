@@ -313,21 +313,54 @@ export function isLocked(payload: string): boolean {
   try { return !!((b64urlDecode(payload.slice(1, 8))[1] ?? 0) & F_ENC); } catch { return false; }
 }
 
-/** Re-encode an image in the browser. Returns null if not resizable (e.g. GIF/SVG). */
+/** Re-encode raster images locally. Auto mode compares AVIF and WebP and
+ * keeps the smallest result only when it beats the original file.
+ * Animated formats are deliberately excluded because canvas would drop frames.
+ */
 export async function processImage(
-  file: Blob, o: { maxSide: number; quality: number; format: "image/webp" | "image/jpeg" | "image/png" | "original" },
+  file: Blob,
+  o: { maxSide: number; quality: number; format: "auto" | "image/webp" | "image/avif" | "image/jpeg" | "image/png" | "original" },
 ): Promise<{ blob: Blob; w: number; h: number } | null> {
-  if (!/^image\/(png|jpeg|webp|bmp|avif)/.test(file.type)) return null;
+  if (!/^image\/(png|jpeg|webp|bmp|avif)$/.test(file.type)) return null;
   const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, o.maxSide / Math.max(bmp.width, bmp.height));
-  const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  if (!ctx) return null;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bmp, 0, 0, w, h);
-  const type = o.format === "original" ? file.type : o.format;
-  const blob = await new Promise<Blob | null>((r) => c.toBlob(r, type, o.quality));
-  return blob ? { blob, w, h } : null;
+  try {
+    const scale = Math.min(1, o.maxSide / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) return null;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, w, h);
+
+    const encode = (type: string, quality: number) => new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, type, quality);
+    });
+    const quality = Math.min(0.95, Math.max(0.2, o.quality));
+    const formats = o.format === "auto"
+      ? ["image/avif", "image/webp"]
+      : o.format === "original"
+        ? [file.type]
+        : [o.format];
+    const candidates: Blob[] = [];
+    for (const format of formats) {
+      try {
+        const encoded = await encode(format, quality);
+        // Unsupported encoders may silently fall back to PNG; only accept
+        // the requested codec when the browser actually produced that MIME.
+        if (encoded && encoded.type === format) candidates.push(encoded);
+      } catch { /* try the next browser encoder */ }
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => a.size - b.size);
+    const best = candidates[0];
+    // Never inflate an image just because the user enabled optimization.
+    if (!best || best.size >= file.size) return null;
+    return { blob: best, w, h };
+  } finally {
+    bmp.close();
+  }
 }

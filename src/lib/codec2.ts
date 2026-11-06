@@ -4,6 +4,7 @@ import { parse as parseHtml, serialize as serializeHtml } from "parse5";
 import { parse as parseJs } from "@babel/parser";
 import generate from "@babel/generator";
 import postcss from "postcss";
+import { decodeText } from "./text-encoding";
 
 /*
  * Link formats after the first "#":
@@ -262,7 +263,7 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
     const tl = dv.getUint16(2 + ml);
     const meta = JSON.parse(strFromU8(body.subarray(4 + ml, 4 + ml + tl)) || "{}") as Meta;
     const bytes = body.slice(4 + ml + tl);
-    return { status: "ok", mime, bytes, text: isTextMime(mime) ? new TextDecoder(meta.encoding || "utf-8").decode(bytes) : null, meta, instant, version: 2 };
+    return { status: "ok", mime, bytes, text: isTextMime(mime) ? decodeText(bytes, (meta.encoding || "utf-8") as import("./text-encoding").TextEncoding) : null, meta, instant, version: 2 };
   } catch {
     return { status: "error", reason: "The link is corrupted" };
   }

@@ -94,6 +94,8 @@ function Studio() {
   const [instant, setInstant] = useState(false);
   const [urlToolOpen, setUrlToolOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [binaryData, setBinaryData] = useState<Uint8Array | null>(null);
+  const [binaryName, setBinaryName] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -126,16 +128,17 @@ function Studio() {
 
   const base = mounted ? location.origin + location.pathname : "";
   const [payload, setPayload] = useState("");
+  const sourceBytes = useMemo(() => binaryData ?? new TextEncoder().encode(previewCode), [binaryData, previewCode]);
   useEffect(() => {
     let active = true;
-    if (!previewCode.trim()) { setPayload(""); return; }
-    encodeV2({ mime, bytes: new TextEncoder().encode(previewCode), level: compression, instant, ...(password ? { password } : {}) })
+    if (!sourceBytes.length) { setPayload(""); return; }
+    encodeV2({ mime, bytes: sourceBytes, meta: binaryName ? { name: binaryName } : {}, level: compression, instant, ...(password ? { password } : {}) })
       .then((value) => { if (active) setPayload(value); })
       .catch((error) => { console.error(error); if (active) setPayload(""); });
     return () => { active = false; };
-  }, [previewCode, mime, compression, instant, password]);
+  }, [sourceBytes, mime, compression, instant, password, binaryName]);
   const url = payload ? `${base}#${payload}` : "";
-  const origBytes = useMemo(() => new TextEncoder().encode(previewCode).length, [previewCode]);
+  const origBytes = sourceBytes.length;
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;
 
   const limit =

@@ -16,7 +16,7 @@ export function createLaunchUrlFromBlob(content: Blob, mime: string): string {
 
 /** Creates a local object URL without embedding bytes in the URL. */
 export function createLaunchUrl(bytes: Uint8Array, mime: string): string {
-  const normalized = mime.toLowerCase().split(";")[0].trim() || "application/octet-stream";
+  const normalized = (mime.toLowerCase().split(";")[0] || "").trim() || "application/octet-stream";
   let content = new Blob([bytes as BlobPart], { type: normalized });
   if (normalized.includes("css")) {
     const css = new TextDecoder().decode(bytes).replace(/<\/style/gi, "<\\/style");

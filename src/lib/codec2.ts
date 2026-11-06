@@ -13,7 +13,10 @@ import { decodePayload } from "./codec";
  */
 
 export type Meta = { name?: string; title?: string };
-export type Level = "fast" | "max" | "ultra";
+export type Level = "fast" | "max" | "ultra" | "insane" | "dynamic";
+export type RewriteOptions = { htmlComments?: boolean; htmlWhitespace?: boolean; cssComments?: boolean; cssWhitespace?: boolean; svgMetadata?: boolean };
+
+const F_CODEC_GZIP = 8, F_CODEC_DEFLATE = 16;
 export type Decoded =
   | { status: "ok"; mime: string; bytes: Uint8Array; text: string | null; meta: Meta; instant: boolean; version: 1 | 2 }
   | { status: "locked"; instant: boolean }
@@ -57,17 +60,17 @@ function compress(body: Uint8Array, level: Level): Uint8Array {
 }
 
 export async function encodeV2(opts: {
-  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string;
+  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string; rewrite?: RewriteOptions;
 }): Promise<string> {
   const mimeB = strToU8(opts.mime);
   const metaB = strToU8(JSON.stringify(opts.meta ?? {}));
-  const body = new Uint8Array(4 + mimeB.length + metaB.length + opts.bytes.length);
+  const source = rewriteText(opts.bytes, opts.mime, opts.rewrite);\n  const body = new Uint8Array(4 + mimeB.length + metaB.length + source.length);
   const dv = new DataView(body.buffer);
   dv.setUint16(0, mimeB.length);
   body.set(mimeB, 2);
   dv.setUint16(2 + mimeB.length, metaB.length);
   body.set(metaB, 4 + mimeB.length);
-  body.set(opts.bytes, 4 + mimeB.length + metaB.length);
+  body.set(source, 4 + mimeB.length + metaB.length);
 
   let flags = 0;
   let payload: Uint8Array = body;
@@ -151,7 +154,7 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
     } catch { return { status: "error", reason: "Wrong password" }; }
   }
   try {
-    if (flags & F_DEFLATE) body = inflateSync(body);
+    if (flags & F_DEFLATE) {\n      const codec = flags & 24;\n      if (codec === F_CODEC_GZIP || codec === F_CODEC_DEFLATE) {\n        const format = codec === F_CODEC_GZIP ? "gzip" : "deflate";\n        body = new Uint8Array(await new Response(new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream(format))).arrayBuffer());\n      } else body = inflateSync(body);\n    }
     const dv = new DataView(body.buffer, body.byteOffset, body.byteLength);
     const ml = dv.getUint16(0);
     const mime = strFromU8(body.subarray(2, 2 + ml));

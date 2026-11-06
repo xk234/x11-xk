@@ -176,7 +176,7 @@ function Studio() {
   }, [sourceBytes, largeFile, mime, compression, instant, rewrite, dynamicRewrite, password, binaryName, textEncoding]);
   const url = payload ? `${base}#${payload}` : "";
   const rawUrl = payload ? `${base}r?data=${encodeURIComponent(payload)}` : "";
-  const rawSupported = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(mime.split(";")[0].trim());
+  const rawSupported = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test((mime.split(";")[0] || "").trim());
   const hasSource = !!largeFile || sourceBytes.length > 0;
   const origBytes = largeFile?.size ?? sourceBytes.length;
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;

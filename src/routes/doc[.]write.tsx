@@ -35,6 +35,10 @@ function DocumentWriteRoute() {
     // response bytes, so this path does not need CORS permission.
     if (isUrlSource(payload)) {
       try {
+        if (/^http:\/\//i.test(payload) && location.protocol === "https:") {
+          setError("This page is HTTPS, so the browser blocks embedding an HTTP URL as mixed content. Use the HTTPS version of that URL if the site provides one.");
+          return;
+        }
         const target = payload.startsWith("//")
           ? new URL(payload, location.href).toString()
           : /^https?:\/\//i.test(payload) || /^blob:/i.test(payload)

@@ -13,7 +13,7 @@ import { DecodeScreen } from "@/components/x11/DecodeScreen";
 import { InfoDialog } from "@/components/x11/InfoDialog";
 import { UrlToolDialog } from "@/components/x11/UrlToolDialog";
 import { decodePayload, formatBytes, payloadFromUrl } from "@/lib/codec";
-import { encodeV2, processImage, type Level, type RewriteOptions } from "@/lib/codec2";
+import { decodeAny, encodeV2, processImage, type Level, type RewriteOptions } from "@/lib/codec2";
 import { EXAMPLES, LANGS, MIMES, langFromFilename } from "@/lib/examples";
 
 const CodeEditor = lazy(() => import("@/components/x11/CodeEditor"));
@@ -140,7 +140,7 @@ function Studio() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset["theme"] = theme;
     localStorage.setItem("x11:theme", theme);
   }, [theme]);
 

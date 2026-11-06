@@ -14,6 +14,7 @@ import { InfoDialog } from "@/components/x11/InfoDialog";
 import { UrlToolDialog } from "@/components/x11/UrlToolDialog";
 import { decodePayload, formatBytes, payloadFromUrl } from "@/lib/codec";
 import { decodeAny, encodeV2, processImage, type Level, type RewriteOptions } from "@/lib/codec2";
+import { createLaunchUrl } from "@/lib/launch";
 import { EXAMPLES, LANGS, MIMES, langFromFilename } from "@/lib/examples";
 
 const CodeEditor = lazy(() => import("@/components/x11/CodeEditor"));
@@ -110,6 +111,8 @@ function Studio() {
   const [urlToolOpen, setUrlToolOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [showMobilePanel, setShowMobilePanel] = useState(false);
+  const [uploadKey, setUploadKey] = useState("");
+  const [uploadedRawUrl, setUploadedRawUrl] = useState("");
   const [theme, setTheme] = useState("crimson");
   const [binaryData, setBinaryData] = useState<Uint8Array | null>(null);
   const [binaryName, setBinaryName] = useState("");
@@ -167,7 +170,7 @@ function Studio() {
   }, [sourceBytes, mime, compression, instant, rewrite, password, binaryName]);
   const url = payload ? `${base}#${payload}` : "";
   const rawUrl = payload ? `${base}r?data=${encodeURIComponent(payload)}` : "";
-  const rawSupported = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/|video\/|font\/|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream|vnd\.ms-fontobject))$/i.test(mime);
+  const rawSupported = /^[a-z0-9!#  const rawSupported = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/|video\/|font\/|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream|vnd\.ms-fontobject))$/i.test(mime);^_.+-]+\/[a-z0-9!#  const rawSupported = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/|video\/|font\/|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream|vnd\.ms-fontobject))$/i.test(mime);^_.+-]+$/i.test(mime.split(";")[0].trim());
   const origBytes = sourceBytes.length;
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;
 
@@ -201,6 +204,29 @@ function Studio() {
     window.open(url, "_blank", "noopener,noreferrer");
   }, [url, remember]);
 
+  const openBlob = () => {
+    if (!sourceBytes.length) return;
+    const objectUrl = createLaunchUrl(sourceBytes, mime);
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const uploadRaw = async () => {
+    if (!sourceBytes.length || !uploadKey) return;
+    try {
+      const response = await fetch(base + "r", {
+        method: "POST",
+        headers: { "Content-Type": mime || "application/octet-stream", "X-X11-Upload-Key": uploadKey, "X-X11-Name": encodeURIComponent(binaryName || "x11-resource") },
+        body: new Blob([sourceBytes as BlobPart], { type: mime || "application/octet-stream" }),
+      });
+      const result = await response.json() as { ok?: boolean; url?: string; error?: string };
+      if (!response.ok || !result.url) throw new Error(result.error || ("Upload failed (HTTP " + response.status + ")"));
+      setUploadedRawUrl(result.url);
+      await navigator.clipboard.writeText(result.url);
+      toast.success("Large raw link uploaded and copied");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload failed");
+    }
+  };
   const download = () => {
     if (!sourceBytes.length) return;
     const ext = mime.includes("html") ? "html" : mime.includes("svg") ? "svg" : mime.includes("json") ? "json" : mime.includes("css") ? "css" : mime.includes("javascript") ? "js" : "bin";
@@ -446,6 +472,7 @@ function Studio() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button variant="hero" onClick={copy} disabled={!url}><Copy /> Copy</Button>
               <Button variant="outline" onClick={open} disabled={!url}><ExternalLink /> Open</Button>
+              <Button variant="outline" size="sm" onClick={openBlob} disabled={!sourceBytes.length}><ExternalLink /> Open Blob</Button>
               <Button variant="outline" size="sm" onClick={async () => { if (!rawUrl) return; await navigator.clipboard.writeText(rawUrl); toast.success("Raw resource URL copied"); }} disabled={!rawUrl || !!password || !rawSupported}><Link2 /> Copy raw URL</Button>
               <Button variant="outline" size="sm" onClick={download} disabled={!sourceBytes.length}><Download /> Download</Button>
               <Button variant={showQr ? "secondary" : "outline"} size="sm" onClick={() => setShowQr(!showQr)} disabled={!url}><QrCode /> QR code</Button>
@@ -457,7 +484,14 @@ function Studio() {
               </div>
             )}
 
-            {rawUrl && <p className="mt-2 text-[10px] text-muted-foreground">{rawSupported ? "Raw URL serves this asset through the Pages /r function, including byte-range requests for media players. Very large query URLs can still be rejected by browsers or the edge; use upload-backed transfer for large files." : "Raw mode is available for supported images, audio, video, fonts and PDFs; this MIME type is not currently served as a raw resource."}</p>}
+            <div className="mt-3 space-y-2 rounded-lg border bg-background/40 p-3">
+              <div className="text-xs font-medium">Large raw link · R2 storage</div>
+              <input type="password" value={uploadKey} onChange={(e) => setUploadKey(e.target.value)} placeholder="Cloudflare X11_UPLOAD_KEY" className="h-9 w-full rounded-md border bg-background px-3 text-xs" />
+              <Button variant="outline" size="sm" className="w-full" onClick={uploadRaw} disabled={!sourceBytes.length || !uploadKey.trim()}><Upload /> Upload resource and copy short link</Button>
+              {uploadedRawUrl && <p className="break-all text-[10px] text-muted-foreground">Stored link: {uploadedRawUrl}</p>}
+              <p className="text-[10px] text-muted-foreground">Requires an R2 bucket binding named X11_R2 and a Pages environment secret named X11_UPLOAD_KEY. Current edge upload cap: 100 MiB; larger uploads need a direct multipart R2 upload flow.</p>
+            </div>
+            {rawUrl && <p className="mt-2 text-[10px] text-muted-foreground">{rawSupported ? "Raw mode accepts any syntactically valid MIME type. Active HTML/XHTML/SVG responses receive a restrictive sandbox CSP. Inline query links are size-limited; use R2 storage for larger resources." : "Enter a valid MIME type to enable raw delivery."}</p>}
             {url && limit && (
               <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-3 gap-2 text-center">

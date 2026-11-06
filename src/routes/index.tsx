@@ -113,6 +113,7 @@ function Studio() {
   const [showMobilePanel, setShowMobilePanel] = useState(false);
   const [uploadKey, setUploadKey] = useState("");
   const [uploadedRawUrl, setUploadedRawUrl] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [theme, setTheme] = useState("crimson");
   const [binaryData, setBinaryData] = useState<Uint8Array | null>(null);
   const [binaryName, setBinaryName] = useState("");
@@ -212,19 +213,44 @@ function Studio() {
 
   const uploadRaw = async () => {
     if (!sourceBytes.length || !uploadKey) return;
+    const sessionKey = "x11:r2-upload-session";
+    const partSize = 8 * 1024 * 1024;
     try {
-      const response = await fetch(base + "r", {
-        method: "POST",
-        headers: { "Content-Type": mime || "application/octet-stream", "X-X11-Upload-Key": uploadKey, "X-X11-Name": encodeURIComponent(binaryName || "x11-resource") },
-        body: new Blob([sourceBytes as BlobPart], { type: mime || "application/octet-stream" }),
-      });
-      const result = await response.json() as { ok?: boolean; url?: string; error?: string };
-      if (!response.ok || !result.url) throw new Error(result.error || ("Upload failed (HTTP " + response.status + ")"));
+      const hashBuffer = await crypto.subtle.digest("SHA-256", sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer);
+      const fingerprint = Array.from(new Uint8Array(hashBuffer)).map((v) => v.toString(16).padStart(2, "0")).join("");
+      type Session = { id: string; uploadId: string; mime: string; size: number; name: string; fingerprint: string; parts: { partNumber: number; etag: string }[] };
+      let session = JSON.parse(localStorage.getItem(sessionKey) || "null") as Session | null;
+      if (!session || session.fingerprint !== fingerprint || session.mime !== mime || session.size !== sourceBytes.length) {
+        const start = await fetch(base + "r?multipart=start", { method: "POST", headers: { "Content-Type": "application/json", "X-X11-Upload-Key": uploadKey }, body: JSON.stringify({ mime, name: binaryName || "x11-resource" }) });
+        const created = await start.json() as { id?: string; uploadId?: string };
+        if (!start.ok || !created.id || !created.uploadId) throw new Error("Could not start multipart upload (HTTP " + start.status + ")");
+        session = { id: created.id, uploadId: created.uploadId, mime, size: sourceBytes.length, name: binaryName || "x11-resource", fingerprint, parts: [] };
+        localStorage.setItem(sessionKey, JSON.stringify(session));
+      }
+      const blob = new Blob([sourceBytes as BlobPart]);
+      const completed = new Set(session.parts.map((part) => part.partNumber));
+      const totalParts = Math.ceil(sourceBytes.length / partSize);
+      for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+        const startOffset = (partNumber - 1) * partSize;
+        const endOffset = Math.min(sourceBytes.length, startOffset + partSize);
+        if (!completed.has(partNumber)) {
+          const partResponse = await fetch(base + "r?multipart=part&id=" + session.id + "&uploadId=" + encodeURIComponent(session.uploadId) + "&partNumber=" + partNumber, { method: "POST", headers: { "X-X11-Upload-Key": uploadKey, "Content-Type": "application/octet-stream" }, body: blob.slice(startOffset, endOffset) });
+          const part = await partResponse.json() as { partNumber?: number; etag?: string };
+          if (!partResponse.ok || !part.etag) throw new Error("Upload part " + partNumber + " failed (HTTP " + partResponse.status + ")");
+          session.parts.push({ partNumber, etag: part.etag });
+          localStorage.setItem(sessionKey, JSON.stringify(session));
+        }
+        setUploadProgress(Math.round(endOffset / sourceBytes.length * 100));
+      }
+      const finish = await fetch(base + "r?multipart=complete&id=" + session.id + "&uploadId=" + encodeURIComponent(session.uploadId), { method: "POST", headers: { "X-X11-Upload-Key": uploadKey, "Content-Type": "application/json" }, body: JSON.stringify({ parts: session.parts }) });
+      const result = await finish.json() as { url?: string };
+      if (!finish.ok || !result.url) throw new Error("Could not complete upload (HTTP " + finish.status + ")");
       setUploadedRawUrl(result.url);
+      localStorage.removeItem(sessionKey);
       await navigator.clipboard.writeText(result.url);
       toast.success("Large raw link uploaded and copied");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed");
+      toast.error(error instanceof Error ? error.message : "Upload failed. The session is saved so you can retry.");
     }
   };
   const download = () => {
@@ -487,9 +513,11 @@ function Studio() {
             <div className="mt-3 space-y-2 rounded-lg border bg-background/40 p-3">
               <div className="text-xs font-medium">Large raw link · R2 storage</div>
               <input type="password" value={uploadKey} onChange={(e) => setUploadKey(e.target.value)} placeholder="Cloudflare X11_UPLOAD_KEY" className="h-9 w-full rounded-md border bg-background px-3 text-xs" />
-              <Button variant="outline" size="sm" className="w-full" onClick={uploadRaw} disabled={!sourceBytes.length || !uploadKey.trim()}><Upload /> Upload resource and copy short link</Button>
+              <Button variant="outline" size="sm" className="w-full" onClick={uploadRaw} disabled={!sourceBytes.length || !uploadKey.trim()}><Upload /> Upload / resume large raw link</Button>
+              {uploadProgress > 0 && uploadProgress < 100 && <p className="text-[10px] text-muted-foreground">Transfer progress: {uploadProgress}%</p>}
+              {uploadProgress === 100 && <p className="text-[10px] text-success">All chunks sent; finalizing resource…</p>}
               {uploadedRawUrl && <p className="break-all text-[10px] text-muted-foreground">Stored link: {uploadedRawUrl}</p>}
-              <p className="text-[10px] text-muted-foreground">Requires an R2 bucket binding named X11_R2 and a Pages environment secret named X11_UPLOAD_KEY. Current edge upload cap: 100 MiB; larger uploads need a direct multipart R2 upload flow.</p>
+              <p className="text-[10px] text-muted-foreground">Requires an R2 bucket binding named X11_R2 and a Pages environment secret named X11_UPLOAD_KEY. Uses 8 MiB resumable R2 multipart chunks. The Cloudflare Pages request-size and execution limits still apply to each request.</p>
             </div>
             {rawUrl && <p className="mt-2 text-[10px] text-muted-foreground">{rawSupported ? "Raw mode accepts any syntactically valid MIME type. Active HTML/XHTML/SVG responses receive a restrictive sandbox CSP. Inline query links are size-limited; use R2 storage for larger resources." : "Enter a valid MIME type to enable raw delivery."}</p>}
             {url && limit && (

@@ -61,6 +61,7 @@ export const TODO: { text: string; done: boolean }[] = [
   { text: "Add upload-backed short raw URLs for large assets; query-string raw URLs are limited by URL length", done: false },
   { text: "Add an advanced compression toggles panel with parser-grade HTML/CSS/JS/SVG rewrites and dynamic best-combination search", done: false },
   { text: "Raw resource mode for third-party image / media fetches using a CORS-enabled Pages Function at /r?data=", done: true },
+  { text: "Raw media byte-range support and /r?health=1 diagnostics", done: true },
   { text: "Password-protected links", done: true },
   { text: "Video / audio / any file support", done: true },
   { text: "Iframe embed builder", done: true },
@@ -72,4 +73,7 @@ export const TODO: { text: string; done: boolean }[] = [
   { text: "Streaming / chunked payload format for very large projects, with integrity checks and resumable local processing", done: false },
   { text: "Mobile layout for the link panel", done: false },
   { text: "Custom themes / your own accent color", done: true },
+  { text: "Mobile link panel", done: true },
+  { text: "P2P invite links with optional WSS signaling, configurable STUN/TURN, password-protected session descriptors, resumable WebRTC file transfer and live streams", done: false },
+  { text: "Cooperating postMessage preview bridge with origin/source/nonce validation; no cross-origin security bypass", done: false },
 ];

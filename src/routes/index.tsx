@@ -217,6 +217,8 @@ function Studio() {
       } catch (error) { console.warn("Image processing skipped", error); }
     }
     setMime(detectedMime);
+    setCustomMimeOpen(false);
+    setCustomMime("");
     setBinaryName(f.name);
     if (/^text\//i.test(detectedMime) || /json|javascript|xml|svg|yaml/i.test(detectedMime)) {
       setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(l);
@@ -301,7 +303,13 @@ function Studio() {
               <select
                 aria-label="Language"
                 value={lang}
-                onChange={(e) => setLang(e.target.value)}
+                onChange={(e) => {
+                  const next = LANGS.find((item) => item.value === e.target.value);
+                  setLang(e.target.value);
+                  if (next?.mime) setMime(next.mime);
+                  setCustomMimeOpen(false);
+                  setCustomMime("");
+                }}
                 className="h-8 rounded-md border bg-secondary px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
               >
                 {LANGS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
@@ -363,7 +371,7 @@ function Studio() {
           <Section title="Opens as">
             <select
               aria-label="File type"
-              value={MIMES.includes(mime) ? mime : "custom"}
+              value={customMimeOpen || !MIMES.includes(mime) ? "custom" : mime}
               onChange={(e) => {
                 if (e.target.value === "custom") {
                   setCustomMimeOpen(true);

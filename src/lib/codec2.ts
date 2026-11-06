@@ -241,9 +241,11 @@ async function decodeUrlSource(input: string): Promise<Decoded> {
       if (declared > maxBytes) return { status: "error", reason: "File exceeds the 50 MB browser import limit." };
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.byteLength > maxBytes) return { status: "error", reason: "File exceeds the 50 MB browser import limit." };
-      const mime = (response.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      const mime = contentType.split(";")[0].trim();
+      const charset = contentType.match(/;\\s*charset=([^;]+)/i)?.[1]?.replace(/["\']/g, "").trim().toLowerCase();
       const parsed = new URL(candidate);
-      return { status: "ok", mime, bytes, text: isTextMime(mime) ? strFromU8(bytes) : null, meta: { name: parsed.pathname.split("/").pop() || parsed.hostname }, instant: false, version: 2 };
+      return { status: "ok", mime, bytes, text: isTextMime(mime) ? decodeText(bytes, (charset || "utf-8") as import("./text-encoding").TextEncoding) : null, meta: { name: parsed.pathname.split("/").pop() || parsed.hostname, ...(charset ? { encoding: charset } : {}) }, instant: false, version: 2 };
     } catch (error) {
       lastError = error instanceof TypeError ? "Browser fetch was blocked (usually CORS), or this blob URL is no longer available in this tab." : (error instanceof Error ? error.message : lastError);
     }

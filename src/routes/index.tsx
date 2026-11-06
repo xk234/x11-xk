@@ -537,7 +537,7 @@ function Studio() {
             </div>
             <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={imageOptimize} onChange={(e) => setImageOptimize(e.target.checked)} /> Re-encode raster images on import</label>
             <label className="mt-3 block text-xs text-muted-foreground">Image maximum dimension (next import)</label>
-            <select value={imageMaxSide} onChange={(e) => setImageMaxSide(Number(e.target.value))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value={1024}>1024 px</option><option value={2048}>2048 px</option><option value={4096}>4096 px</option><option value={8192}>8192 px</option><option value={16384}>16384 px</option></select>
+            <select value={imageMaxSide} onChange={(e) => setImageMaxSide(Number(e.target.value))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value={1024}>1024 px</option><option value={2048}>2048 px</option><option value={4096}>4096 px</option><option value={8192}>8192 px</option></select>
             <label className="mt-3 block text-xs text-muted-foreground">Compression quality: {Math.round(imageQuality * 100)}%</label>
             <input type="range" min="0.2" max="0.95" step="0.02" value={imageQuality} onChange={(e) => setImageQuality(Number(e.target.value))} className="w-full" />
             <label className="mt-3 block text-xs text-muted-foreground">Image output format</label>

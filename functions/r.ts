@@ -62,8 +62,19 @@ async function unpack(payload: string): Promise<{ mime: string; bytes: Uint8Arra
 }
 
 function validMime(input: string): string | null {
+  const parts = input.split(";");
+  const mime = parts[0].toLowerCase().trim();
+  if (!/^[a-z0-9!#function validMime(input: string): string | null {
   const mime = input.toLowerCase().split(";")[0].trim();
   return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mime) ? mime : null;
+}^_.+-]+\\/[a-z0-9!#function validMime(input: string): string | null {
+  const mime = input.toLowerCase().split(";")[0].trim();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mime) ? mime : null;
+}^_.+-]+$/.test(mime)) return null;
+  const charset = parts.slice(1).map((part) => part.trim()).find((part) => /^charset=/i.test(part));
+  if (!charset) return mime;
+  const value = charset.slice(charset.indexOf("=") + 1).replace(/^["\']|["\']$/g, "").toLowerCase();
+  return /^[a-z0-9._-]{1,40}$/.test(value) ? mime + "; charset=" + value : mime;
 }
 
 function headersFor(mime: string, cache = "public, max-age=3600") {
@@ -79,7 +90,8 @@ function headersFor(mime: string, cache = "public, max-age=3600") {
   headers.set("Cache-Control", cache);
   headers.set("Content-Disposition", "inline");
   // Active documents must not execute with the x11 Studio's origin.
-  if (mime === "text/html" || mime === "application/xhtml+xml" || mime === "image/svg+xml") {
+  const baseMime = mime.split(";")[0].trim();
+  if (baseMime === "text/html" || baseMime === "application/xhtml+xml" || baseMime === "image/svg+xml") {
     headers.set("Content-Security-Policy", "sandbox; default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; media-src blob: https:; form-action 'none'; base-uri 'none'");
   }
   return headers;

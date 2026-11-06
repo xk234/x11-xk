@@ -38,3 +38,45 @@ Record source bytes, compressed bytes, final base64url characters, encode/decode
 ## Current implementation boundary
 
 Current v2 is a single-file container using fflate Deflate and base64url. Fast / Max / Ultra currently vary Deflate settings; this is not yet the planned multi-codec competition. Multi-file static project packaging, Brotli/Zstandard/LZMA WASM, cross-file dictionaries, chunking, and full project reconstruction are roadmap items, not shipped features.
+
+
+## Expanded codec ladder (implementation targets)
+
+"After Ultra" is a codec search ladder, not a promise that every algorithm wins on every input. The app should benchmark candidates against the final container size and discard any candidate that expands the payload.
+
+| Tier | Candidate engines | Intended trade-off |
+|---|---|---|
+| Fast | Deflate level 1 | Lowest encode latency |
+| Max | Deflate level 9 | Strong general-purpose compression |
+| Ultra | Deflate level/memory sweep | More search within Deflate |
+| Insane | Deflate sweep + browser-native gzip/deflate | More candidate testing |
+| Dynamic | Select the smallest measured supported candidate | Best measured output, slower encode |
+| Future: Deep | Brotli quality sweep, Zstandard levels, LZMA2/XZ, Zopfli/Deflate, LZ4/Snappy fast paths | WASM codec competition |
+| Future: Research | BZip2, PPMd, LZHAM and dictionary-trained variants | Specialized workloads; only ship if benchmarks justify cost |
+
+The browser currently has native CompressionStream support for gzip/deflate formats, not a universal built-in Brotli, Zstandard or LZMA interface. Future engines must be locally bundled WASM/JS modules, lazily loaded, and selected only after compatibility and memory checks.
+
+## Compression toggles and rewrite pipeline
+
+Current toggles are deliberately opt-in:
+- strip ordinary HTML comments (preserves conditional comments)
+- collapse whitespace between HTML tags
+- strip CSS comments
+- compact CSS punctuation/whitespace
+- remove SVG comments and metadata elements
+- raster image resize / quality / output format controls
+
+The current text rewrites are conservative regex passes, not parser-grade minifiers. They can alter unusual documents or whitespace-sensitive content; leave them disabled when byte-for-byte fidelity is required. Do not apply regex comment stripping to JavaScript: strings, template literals, regular expressions and source maps require a real parser/minifier.
+
+Planned parser-grade stages:
+- HTML: parse5-based tree minification with preserve-text/raw-text rules
+- CSS: Lightning CSS or csso with syntax-aware minification
+- JavaScript: esbuild or Terser with target/runtime settings and source-map controls
+- SVG: SVGO with configurable plugins and preservation of accessibility/title/IDs
+- Images: browser codecs plus locally bundled WebP/AVIF encoders where supported; optional metadata stripping and explicit lossy/lossless modes
+- Fonts: WOFF2 conversion and optional font subsetting when a safe glyph set is supplied
+- Dynamic pipeline: test rewrite combinations, verify parse/decode validity, then compare the final encoded link—not only intermediate compressed bytes
+
+## Raw resource mode
+
+The Pages Function at /r/<payload> decodes an unencrypted x11 payload and serves a limited allowlist of passive media/document types with CORS headers. It is intended for remote consumers such as slide editors that fetch an image URL. The fragment form /#<payload> is client-side only: browsers never send URL fragments in HTTP requests, so it cannot be used as a server-fetchable asset URL. Raw mode currently rejects HTML, SVG, CSS, JavaScript and password-protected payloads, and caps decoded resources at 25 MiB. This endpoint means the project is no longer strictly static-only; the rest of the Studio remains static, while this one Pages Function supplies raw bytes.

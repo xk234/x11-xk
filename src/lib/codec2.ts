@@ -117,7 +117,12 @@ export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOpt
       const block = new Set(["address","article","aside","blockquote","body","dd","div","dl","dt","fieldset","figcaption","figure","footer","form","h1","h2","h3","h4","h5","h6","head","header","hr","html","main","nav","ol","p","section","table","tbody","td","tfoot","th","thead","tr","ul"]);
       const walk = (node: any) => {
         if (!Array.isArray(node.childNodes)) return;
-        if (options.htmlComments) node.childNodes = node.childNodes.filter((child: any) => child.nodeName !== "#comment");
+        if (options.htmlComments) node.childNodes = node.childNodes.filter((child: any) => {
+          if (child.nodeName !== "#comment") return true;
+          // Preserve legacy conditional comments such as <!--[if IE]>...<![endif]-->.
+          const data = String(child.data ?? "").trimStart();
+          return /^\\[if\\b|^\\[endif\\]/i.test(data);
+        });
         if (options.htmlWhitespace && !["pre","textarea","script","style"].includes(node.tagName)) {
           node.childNodes = node.childNodes.filter((child: any, index: number, all: any[]) => {
             if (child.nodeName !== "#text" || !/^\s+$/.test(child.value ?? "")) return true;

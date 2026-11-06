@@ -35,13 +35,12 @@ const HIST_KEY = "x11:history";
 
 function Index() {
   const [mode, setMode] = useState<"loading" | "decode" | "studio">("loading");
-  const [decoded, setDecoded] = useState<{ mime: string | null; content: string | null }>({ mime: null, content: null });
+  const [payload, setPayload] = useState("");
 
   useEffect(() => {
-    const payload = location.hash.slice(1);
-    if (payload) {
-      const d = decodePayload(payload);
-      setDecoded(d ? d : { mime: null, content: null });
+    const currentPayload = location.hash.slice(1);
+    if (currentPayload) {
+      setPayload(currentPayload);
       setMode("decode");
     } else setMode("studio");
   }, []);
@@ -50,11 +49,10 @@ function Index() {
   if (mode === "decode")
     return (
       <DecodeScreen
-        mime={decoded.mime}
-        content={decoded.content}
-        onEdit={() => {
-          if (decoded.content !== null) {
-            localStorage.setItem(DRAFT_KEY, JSON.stringify({ code: decoded.content, mime: decoded.mime }));
+        payload={payload}
+        onEdit={(d) => {
+          if (d && d.text !== null) {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ code: d.text, mime: d.mime }));
           }
           history.replaceState(null, "", location.pathname);
           setMode("studio");
@@ -132,7 +130,7 @@ function Studio() {
 
   const remember = useCallback(() => {
     if (!url) return;
-    const title = previewCode.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim() || previewCode.trim().split("\n")[0].slice(0, 48);
+    const title = previewCode.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim() || (previewCode.trim().split("\n")[0]?.slice(0, 48) ?? "");
     const item: HistoryItem = { url, mime, size: url.length, at: Date.now(), title };
     setHist((h) => {
       const next = [item, ...h.filter((x) => x.url !== url)].slice(0, 12);
@@ -142,14 +140,14 @@ function Studio() {
   }, [url, mime, previewCode]);
 
   const copy = useCallback(async () => {
-    if (!url) return toast.error("Nothing to share yet — write something first");
+    if (!url) { toast.error("Nothing to share yet — write something first"); return; }
     await navigator.clipboard.writeText(url);
     remember();
     toast.success("Link copied", { description: `${url.length.toLocaleString()} characters` });
   }, [url, remember]);
 
   const open = useCallback(() => {
-    if (!url) return toast.error("Nothing to open yet");
+    if (!url) { toast.error("Nothing to open yet"); return; }
     remember();
     window.open(url, "_blank", "noopener");
   }, [url, remember]);
@@ -174,7 +172,7 @@ function Studio() {
 
   const importLink = () => {
     const d = decodePayload(payloadFromUrl(importText));
-    if (!d) return toast.error("That doesn't look like a valid x11 link");
+    if (!d) { toast.error("That doesn't look like a valid x11 link"); return; }
     setCode(d.content);
     setMime(d.mime);
     setLang(guessLang(d.mime));

@@ -16,7 +16,7 @@ import postcss from "postcss";
  * "!" and "~" are not in the LZ alphabet, so old links keep decoding unchanged.
  */
 
-export type Meta = { name?: string; title?: string };
+export type Meta = { name?: string; title?: string; encoding?: string };
 export type Level = "fast" | "max" | "ultra" | "insane" | "dynamic";
 export type RewriteOptions = { htmlComments?: boolean; htmlWhitespace?: boolean; cssComments?: boolean; cssWhitespace?: boolean; svgMetadata?: boolean; jsComments?: boolean; jsMinify?: boolean; jsonMinify?: boolean };
 
@@ -262,7 +262,7 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
     const tl = dv.getUint16(2 + ml);
     const meta = JSON.parse(strFromU8(body.subarray(4 + ml, 4 + ml + tl)) || "{}") as Meta;
     const bytes = body.slice(4 + ml + tl);
-    return { status: "ok", mime, bytes, text: isTextMime(mime) ? strFromU8(bytes) : null, meta, instant, version: 2 };
+    return { status: "ok", mime, bytes, text: isTextMime(mime) ? new TextDecoder(meta.encoding || "utf-8").decode(bytes) : null, meta, instant, version: 2 };
   } catch {
     return { status: "error", reason: "The link is corrupted" };
   }

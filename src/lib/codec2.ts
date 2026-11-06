@@ -121,7 +121,7 @@ export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOpt
           if (child.nodeName !== "#comment") return true;
           // Preserve legacy conditional comments such as <!--[if IE]>...<![endif]-->.
           const data = String(child.data ?? "").trimStart();
-          return /^\\[if\\b|^\\[endif\\]/i.test(data);
+          return /^\[if\b|^\[endif\]/i.test(data);
         });
         if (options.htmlWhitespace && !["pre","textarea","script","style"].includes(node.tagName)) {
           node.childNodes = node.childNodes.filter((child: any, index: number, all: any[]) => {

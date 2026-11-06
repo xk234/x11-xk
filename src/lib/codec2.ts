@@ -88,9 +88,48 @@ export async function encodeV2(opts: {
   return "~" + b64urlEncode(out);
 }
 
+export function isUrlSource(value: string): boolean {
+  const s = value.trim();
+  return /^blob:/i.test(s) || /^https?:\\/\\//i.test(s) || /^\\/\\//.test(s) || /^[\\w.-]+\\.[a-z]{2,}(?::\\d+)?(?:[/?#]|$)/i.test(s);
+}
+
+/** Browser-only URL import. Cross-origin sources must allow CORS. */
+async function decodeUrlSource(input: string): Promise<Decoded> {
+  const raw = input.trim();
+  const candidates: string[] = [];
+  try {
+    if (/^blob:/i.test(raw) || /^https?:\\/\\//i.test(raw)) candidates.push(raw);
+    else if (raw.startsWith("//")) candidates.push(new URL(raw, location.href).toString());
+    else {
+      const host = raw.replace(/^\\/+/, "");
+      candidates.push(new URL("https://" + host).toString());
+      if (location.protocol !== "https:") candidates.push(new URL("http://" + host).toString());
+    }
+  } catch { return { status: "error", reason: "Invalid URL. Use blob:, http:// or https://." }; }
+  let lastError = "The browser could not read that URL.";
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate);
+      if (!response.ok) { lastError = "The URL returned HTTP " + response.status + "."; continue; }
+      const maxBytes = 50 * 1024 * 1024;
+      const declared = Number(response.headers.get("content-length") || 0);
+      if (declared > maxBytes) return { status: "error", reason: "File exceeds the 50 MB browser import limit." };
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > maxBytes) return { status: "error", reason: "File exceeds the 50 MB browser import limit." };
+      const mime = (response.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
+      const parsed = new URL(candidate);
+      return { status: "ok", mime, bytes, text: isTextMime(mime) ? strFromU8(bytes) : null, meta: { name: parsed.pathname.split("/").pop() || parsed.hostname }, instant: false, version: 2 };
+    } catch (error) {
+      lastError = error instanceof TypeError ? "Browser fetch was blocked (usually CORS), or this blob URL is no longer available in this tab." : (error instanceof Error ? error.message : lastError);
+    }
+  }
+  return { status: "error", reason: lastError };
+}
+
 export async function decodeAny(payload: string, password?: string): Promise<Decoded> {
   payload = payload.trim();
   if (!payload) return { status: "error", reason: "Empty link" };
+  if (isUrlSource(payload)) return decodeUrlSource(payload);
   if (payload[0] !== "~") {
     const instant = payload[0] === "!";
     const d = decodePayload(instant ? payload.slice(1) : payload);

@@ -100,7 +100,7 @@ export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOpt
     if (mime.includes("css")) {
       if (!options.cssComments && !options.cssWhitespace) return bytes;
       const root = postcss.parse(source);
-      if (options.cssComments) root.walkComments((comment) => comment.remove());
+      if (options.cssComments) root.walkComments((comment) => { comment.remove(); });
       if (options.cssWhitespace) {
         root.walk((node) => {
           node.raws.before = "";
@@ -235,6 +235,7 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
   }
   let raw: Uint8Array;
   try { raw = b64urlDecode(payload.slice(1)); } catch { return { status: "error", reason: "The link is corrupted" }; }
+  if (raw.length < 2) return { status: "error", reason: "The link is incomplete or corrupted" };
   if (raw[0] !== 2) return { status: "error", reason: "Made by a newer x11 version" };
   const flags = raw[1] ?? 0;
   const instant = !!(flags & F_INSTANT);

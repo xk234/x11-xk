@@ -170,7 +170,7 @@ function Studio() {
   }, [sourceBytes, mime, compression, instant, rewrite, password, binaryName]);
   const url = payload ? `${base}#${payload}` : "";
   const rawUrl = payload ? `${base}r?data=${encodeURIComponent(payload)}` : "";
-  const rawSupported = /^[a-z0-9!#  const rawSupported = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/|video\/|font\/|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream|vnd\.ms-fontobject))$/i.test(mime);^_.+-]+\/[a-z0-9!#  const rawSupported = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/|video\/|font\/|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream|vnd\.ms-fontobject))$/i.test(mime);^_.+-]+$/i.test(mime.split(";")[0].trim());
+  const rawSupported = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(mime.split(";")[0].trim());
   const origBytes = sourceBytes.length;
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;
 

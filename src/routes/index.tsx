@@ -218,6 +218,7 @@ function Studio() {
 
   const uploadRaw = async () => {
     if (!hasSource || !uploadKey) return;
+    setUploadProgress(0);
     const sessionKey = "x11:r2-upload-session";
     const partSize = 8 * 1024 * 1024;
     try {
@@ -353,7 +354,7 @@ function Studio() {
         <div className="flex items-center gap-1.5">
           <div className="mr-1 hidden items-center gap-1 md:flex">
             {EXAMPLES.map((ex) => (
-              <Button key={ex.name} variant="ghost" size="sm" onClick={() => { setBinaryData(null); setBinaryName(""); setCode(ex.code); setLang(ex.lang); setMime(ex.mime); }}>
+              <Button key={ex.name} variant="ghost" size="sm" onClick={() => { setLargeFile(null); setBinaryData(null); setBinaryName(""); setCode(ex.code); setLang(ex.lang); setMime(ex.mime); }}>
                 <Sparkles /> {ex.name}
               </Button>
             ))}
@@ -363,7 +364,7 @@ function Studio() {
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}><Link2 /> Decode link</Button>
           <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setShowMobilePanel((v) => !v)}>Link panel</Button>
           <Button variant="ghost" size="icon" title="Update history and TODO" onClick={() => setInfoOpen(true)}>Info</Button>
-          <Button variant="ghost" size="icon" title="Clear" onClick={() => { setCode(""); setBinaryData(null); setBinaryName(""); }}><Trash2 /></Button>
+          <Button variant="ghost" size="icon" title="Clear" onClick={() => { setCode(""); setLargeFile(null); setBinaryData(null); setBinaryName(""); }}><Trash2 /></Button>
           <input ref={fileRef} type="file" hidden onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])} />
         </div>
       </header>
@@ -404,7 +405,7 @@ function Studio() {
             <div className="relative min-h-0 bg-transparent">
               {mounted && (
                 <Suspense fallback={null}>
-                  <CodeEditor value={code} language={lang} wordWrap={wrap} onChange={(value) => { setBinaryData(null); setBinaryName(""); setCode(value); }} onMount={(ed) => { editorRef.current = ed; }} />
+                  <CodeEditor value={code} language={lang} wordWrap={wrap} onChange={(value) => { setLargeFile(null); setBinaryData(null); setBinaryName(""); setCode(value); }} onMount={(ed) => { editorRef.current = ed; }} />
                 </Suspense>
               )}
               {binaryData && <div className="absolute inset-x-4 top-4 rounded-xl border bg-card/90 p-4 text-sm"><strong>{binaryName || "Binary file"}</strong><p className="mt-1 text-muted-foreground">{mime} · {formatBytes(binaryData.length)} · raw bytes</p></div>}
@@ -575,7 +576,7 @@ function Studio() {
                       onClick={async () => {
                         const d = await decodeAny(payloadFromUrl(h.url));
                         if (d.status === "ok") {
-                          setMime(d.mime); setBinaryName(d.meta.name || ""); setTextEncoding((d.meta.encoding || "utf-8") as TextEncoding);
+                          setLargeFile(null); setMime(d.mime); setBinaryName(d.meta.name || ""); setTextEncoding((d.meta.encoding || "utf-8") as TextEncoding);
                           if (d.text !== null) { setBinaryData(null); setCode(d.text); setLang(guessLang(d.mime)); }
                           else { setCode(""); setBinaryData(d.bytes); setLang("plaintext"); }
                         }
@@ -607,7 +608,7 @@ function Studio() {
         </aside>
       </div>
 
-      {urlToolOpen && <UrlToolDialog onClose={() => setUrlToolOpen(false)} onEmbed={(html) => { setBinaryData(null); setBinaryName("embed.html"); setCode(html); setMime("text/html"); setLang("html"); }} onFetched={({ name, mime: fetchedMime, bytes }) => { setMime(fetchedMime); setBinaryName(name); if (/^text\//i.test(fetchedMime) || /json|javascript|xml|svg|yaml/i.test(fetchedMime)) { setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(guessLang(fetchedMime)); } else { setCode(""); setBinaryData(bytes); setLang("plaintext"); } }} />}
+      {urlToolOpen && <UrlToolDialog onClose={() => setUrlToolOpen(false)} onEmbed={(html) => { setLargeFile(null); setBinaryData(null); setBinaryName("embed.html"); setCode(html); setMime("text/html"); setLang("html"); }} onFetched={({ name, mime: fetchedMime, bytes }) => { setLargeFile(null); setMime(fetchedMime); setBinaryName(name); if (/^text\//i.test(fetchedMime) || /json|javascript|xml|svg|yaml/i.test(fetchedMime)) { setBinaryData(null); setTextEncoding("utf-8"); setCode(new TextDecoder().decode(bytes)); setLang(guessLang(fetchedMime)); } else { setCode(""); setBinaryData(bytes); setLang("plaintext"); } }} />}
       {infoOpen && <InfoDialog onClose={() => setInfoOpen(false)} />}
 
       {dragging && (

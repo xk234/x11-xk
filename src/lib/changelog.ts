@@ -1,5 +1,15 @@
 export const CHANGELOG: { version: string; date: string; title: string; items: string[] }[] = [
   {
+    version: "2.2",
+    date: "Nov 2026",
+    title: "Raw endpoint routing repair and runtime roadmap",
+    items: [
+      "Raw resources now use /r?data=PAYLOAD instead of a catch-all path segment",
+      "Raw endpoint validates v2 container headers and rejects encrypted payloads",
+      "Added roadmap for local Pyodide, Clang/WASI, Lua, Ruby, PHP, SQLite and game runtimes",
+    ],
+  },
+  {
     version: "2.1",
     date: "Nov 2026",
     title: "Codec search and raw resources",

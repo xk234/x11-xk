@@ -195,7 +195,7 @@ function Studio() {
   const loadFile = async (f: File) => {
     let bytes = new Uint8Array(await f.arrayBuffer());
     const l = langFromFilename(f.name);
-    let detectedMime = LANGS.find((x) => x.value === l)?.mime ?? (f.type || "application/octet-stream");
+    let detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
     if (detectedMime.startsWith("image/")) {
       try {
         const processed = await processImage(new Blob([bytes as BlobPart], { type: detectedMime }), { maxSide: imageMaxSide, quality: imageQuality, format: imageFormat });

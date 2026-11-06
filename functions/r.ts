@@ -14,7 +14,7 @@ interface StoredObject {
   httpMetadata?: { contentType?: string; contentDisposition?: string };
   writeHttpMetadata(headers: Headers): void;
 }
-interface MultipartPart { partNumber: number; etag: string }
+interface MultipartPart { partNumber: number; etag: string; sha256?: string }
 interface R2MultipartUploadLike {
   uploadId: string;
   uploadPart(partNumber: number, value: ReadableStream<Uint8Array> | ArrayBuffer): Promise<{ etag: string }>;
@@ -138,8 +138,14 @@ async function handleMultipart(request: Request, env: Env, url: URL): Promise<Re
     const partNumber = Number(url.searchParams.get("partNumber"));
     if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000 || !request.body) return response("Invalid multipart part.", 400);
     try {
-      const part = await upload.uploadPart(partNumber, request.body);
-      return response(JSON.stringify({ ok: true, partNumber, etag: part.etag }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+      const bytes = await request.arrayBuffer();
+      if (bytes.byteLength > 8 * 1024 * 1024) return response("Multipart chunks are limited to 8 MiB.", 413);
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      const actualHash = Array.from(digest).map((value) => value.toString(16).padStart(2, "0")).join("");
+      const expectedHash = request.headers.get("X-X11-SHA256") || "";
+      if (!/^[a-f0-9]{64}$/.test(expectedHash) || expectedHash !== actualHash) return response("Chunk integrity check failed.", 422);
+      const part = await upload.uploadPart(partNumber, bytes);
+      return response(JSON.stringify({ ok: true, partNumber, etag: part.etag, sha256: actualHash }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
     } catch (error) {
       return response(error instanceof Error ? error.message : "Multipart part failed.", 502);
     }
@@ -149,7 +155,7 @@ async function handleMultipart(request: Request, env: Env, url: URL): Promise<Re
     const parts = Array.isArray(input.parts) ? input.parts : [];
     if (!parts.length || parts.some((part) => !Number.isInteger(part.partNumber) || part.partNumber < 1 || typeof part.etag !== "string")) return response("Invalid multipart completion manifest.", 400);
     try {
-      await upload.complete(parts.sort((a, b) => a.partNumber - b.partNumber));
+      await upload.complete(parts.sort((a, b) => a.partNumber - b.partNumber).map(({ partNumber, etag }) => ({ partNumber, etag })));
       return response(JSON.stringify({ ok: true, id, url: new URL("/r?id=" + id, request.url).toString() }), 201, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
     } catch (error) {
       return response(error instanceof Error ? error.message : "Multipart completion failed.", 502);

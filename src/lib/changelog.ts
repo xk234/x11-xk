@@ -40,7 +40,6 @@ export const TODO: { text: string; done: boolean }[] = [
   { text: "Advanced codec experiments: Brotli / Zstandard / LZMA WASM candidates with size-vs-speed benchmarks and backward-compatible decoding", done: false },
   { text: "Resource optimization pipeline: SVG cleanup, image format selection, font subsetting and optional media transcoding", done: false },
   { text: "Streaming / chunked payload format for very large projects, with integrity checks and resumable local processing", done: false },
-  { text: "Multi-file bundles (several files in one link)", done: false },
   { text: "Mobile layout for the link panel", done: false },
   { text: "Custom themes / your own accent color", done: true },
 ];

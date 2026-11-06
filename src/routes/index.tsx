@@ -50,6 +50,14 @@ function Index() {
     } else setMode("studio");
   }, []);
 
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    if (location.protocol !== "https:" && location.hostname !== "localhost") return;
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((error) => {
+      console.warn("x11 offline worker registration failed", error);
+    });
+  }, []);
+
   if (mode === "loading") return <div className="min-h-screen" />;
   if (mode === "decode")
     return (

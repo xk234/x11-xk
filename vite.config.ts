@@ -14,7 +14,7 @@ export default defineConfig({
         // Cloudflare Pages canonicalizes *.html to extensionless URLs.
         // Put the SPA shell at /index.html to avoid the /_shell.html loop.
         prerender: {
-          outputPath: "index.html",
+          outputPath: "/index.html",
         },
       },
     }),

@@ -222,7 +222,7 @@ function Studio() {
     setUploadProgress(0);
     const sessionKey = "x11:r2-upload-session";
     const partSize = 8 * 1024 * 1024;
-    const baseMime = mime.split(";")[0].trim();
+    const baseMime = (mime.split(";")[0] || "").trim();
     const uploadMime = (/^text\//i.test(baseMime) || /json|javascript|xml|svg|yaml|typescript/i.test(baseMime)) ? baseMime + "; charset=" + textEncoding : mime;
     try {
       const content = largeFile ?? new Blob([sourceBytes as BlobPart]);

@@ -1,5 +1,9 @@
 import { deflateSync, inflateSync, strToU8, strFromU8 } from "fflate";
 import { decodePayload } from "./codec";
+import { parse as parseHtml, serialize as serializeHtml } from "parse5";
+import { parse as parseJs } from "@babel/parser";
+import generate from "@babel/generator";
+import postcss from "postcss";
 
 /*
  * Link formats after the first "#":
@@ -14,7 +18,7 @@ import { decodePayload } from "./codec";
 
 export type Meta = { name?: string; title?: string };
 export type Level = "fast" | "max" | "ultra" | "insane" | "dynamic";
-export type RewriteOptions = { htmlComments?: boolean; htmlWhitespace?: boolean; cssComments?: boolean; cssWhitespace?: boolean; svgMetadata?: boolean };
+export type RewriteOptions = { htmlComments?: boolean; htmlWhitespace?: boolean; cssComments?: boolean; cssWhitespace?: boolean; svgMetadata?: boolean; jsComments?: boolean; jsMinify?: boolean; jsonMinify?: boolean };
 
 const F_CODEC_GZIP = 8, F_CODEC_DEFLATE = 16;
 export type Decoded =
@@ -73,18 +77,70 @@ async function compress(body: Uint8Array, level: Level): Promise<{ bytes: Uint8A
 
 export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOptions = {}): Uint8Array {
   if (!isTextMime(mime) || !Object.values(options).some(Boolean)) return bytes;
-  let text = strFromU8(bytes);
-  if (mime.includes("svg")) {
-    if (options.svgMetadata) text = text.replace(/<!--[\s\S]*?-->/g, "").replace(/<metadata\b[^>]*>[\s\S]*?<\/metadata>/gi, "");
-    if (options.htmlWhitespace) text = text.replace(/>\s+</g, "><").trim();
-  } else if (mime.includes("css")) {
-    if (options.cssComments) text = text.replace(/\/\*[\s\S]*?\*\//g, "");
-    if (options.cssWhitespace) text = text.replace(/\s*([{}:;,>])\s*/g, "$1").replace(/\s+/g, " ").trim();
-  } else if (mime.includes("html")) {
-    if (options.htmlComments) text = text.replace(/<!--(?!\s*\[if)[\s\S]*?-->/g, "");
-    if (options.htmlWhitespace) text = text.replace(/>\s+</g, "><").trim();
+  const source = strFromU8(bytes);
+  try {
+    if (mime.includes("javascript") || /typescript|tsx/.test(mime)) {
+      if (!options.jsComments && !options.jsMinify) return bytes;
+      const ast = parseJs(source, {
+        sourceType: "unambiguous",
+        allowReturnOutsideFunction: true,
+        attachComment: false,
+        plugins: ["jsx", "typescript", "decorators-legacy", "classProperties", "dynamicImport", "importMeta", "topLevelAwait"],
+      });
+      return strToU8(generate(ast, {
+        comments: false,
+        compact: !!options.jsMinify,
+        minified: !!options.jsMinify,
+        jsescOption: { minimal: true },
+      }).code);
+    }
+    if (mime.includes("json") && options.jsonMinify) {
+      return strToU8(JSON.stringify(JSON.parse(source)));
+    }
+    if (mime.includes("css")) {
+      if (!options.cssComments && !options.cssWhitespace) return bytes;
+      const root = postcss.parse(source);
+      if (options.cssComments) root.walkComments((comment) => comment.remove());
+      if (options.cssWhitespace) {
+        root.walk((node) => {
+          node.raws.before = "";
+          if (node.raws.between) node.raws.between = node.type === "decl" ? ":" : "";
+          if (node.raws.after) node.raws.after = "";
+        });
+        root.raws.after = "";
+      }
+      return strToU8(root.toString());
+    }
+    if (mime.includes("html")) {
+      if (!options.htmlComments && !options.htmlWhitespace) return bytes;
+      const document = parseHtml(source) as any;
+      const block = new Set(["address","article","aside","blockquote","body","dd","div","dl","dt","fieldset","figcaption","figure","footer","form","h1","h2","h3","h4","h5","h6","head","header","hr","html","main","nav","ol","p","section","table","tbody","td","tfoot","th","thead","tr","ul"]);
+      const walk = (node: any) => {
+        if (!Array.isArray(node.childNodes)) return;
+        if (options.htmlComments) node.childNodes = node.childNodes.filter((child: any) => child.nodeName !== "#comment");
+        if (options.htmlWhitespace && !["pre","textarea","script","style"].includes(node.tagName)) {
+          node.childNodes = node.childNodes.filter((child: any, index: number, all: any[]) => {
+            if (child.nodeName !== "#text" || !/^\s+$/.test(child.value ?? "")) return true;
+            const prev = all[index - 1], next = all[index + 1];
+            return !(prev?.tagName && next?.tagName && block.has(prev.tagName) && block.has(next.tagName));
+          });
+        }
+        for (const child of node.childNodes) walk(child);
+      };
+      walk(document);
+      return strToU8(serializeHtml(document));
+    }
+    if (mime.includes("svg")) {
+      let text = source;
+      if (options.svgMetadata) text = text.replace(/<!--[\s\S]*?-->/g, "").replace(/<metadata\b[^>]*>[\s\S]*?<\/metadata>/gi, "");
+      if (options.htmlWhitespace) text = text.replace(/>\s+</g, "><").trim();
+      return strToU8(text);
+    }
+    return bytes;
+  } catch {
+    // A failed parse must never silently corrupt source. Keep original bytes.
+    return bytes;
   }
-  return strToU8(text);
 }
 
 export async function encodeV2(opts: {

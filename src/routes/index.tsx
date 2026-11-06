@@ -15,6 +15,7 @@ import { UrlToolDialog } from "@/components/x11/UrlToolDialog";
 import { decodePayload, formatBytes, payloadFromUrl } from "@/lib/codec";
 import { decodeAny, encodeV2, processImage, type Level, type RewriteOptions } from "@/lib/codec2";
 import { createLaunchUrl } from "@/lib/launch";
+import { decodeText, detectTextEncoding, encodeText, type TextEncoding } from "@/lib/text-encoding";
 import { EXAMPLES, LANGS, MIMES, langFromFilename } from "@/lib/examples";
 
 const CodeEditor = lazy(() => import("@/components/x11/CodeEditor"));
@@ -56,7 +57,7 @@ function Index() {
         payload={payload}
         onEdit={(d) => {
           if (d && d.text !== null) {
-            localStorage.setItem(DRAFT_KEY, JSON.stringify({ code: d.text, mime: d.mime }));
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ code: d.text, mime: d.mime, encoding: d.meta.encoding || "utf-8" }));
           }
           history.replaceState(null, "", location.pathname);
           setMode("studio");
@@ -93,6 +94,7 @@ function Studio() {
   const [code, setCode] = useState("");
   const [lang, setLang] = useState("html");
   const [mime, setMime] = useState("text/html");
+  const [textEncoding, setTextEncoding] = useState<TextEncoding>("utf-8");
   const [customMimeOpen, setCustomMimeOpen] = useState(false);
   const [customMime, setCustomMime] = useState("");
   const [wrap, setWrap] = useState(false);
@@ -152,23 +154,23 @@ function Studio() {
   useEffect(() => {
     if (!mounted) return;
     const t = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ code, mime }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ code, mime, encoding: textEncoding }));
       setPreviewCode(code);
     }, 350);
     return () => clearTimeout(t);
-  }, [code, mime, mounted]);
+  }, [code, mime, textEncoding, mounted]);
 
   const base = mounted ? `${location.origin}/` : "";
   const [payload, setPayload] = useState("");
-  const sourceBytes = useMemo(() => binaryData ?? new TextEncoder().encode(previewCode), [binaryData, previewCode]);
+  const sourceBytes = useMemo(() => binaryData ?? encodeText(previewCode, textEncoding), [binaryData, previewCode, textEncoding]);
   useEffect(() => {
     let active = true;
     if (!sourceBytes.length) { setPayload(""); return; }
-    encodeV2({ mime, bytes: sourceBytes, meta: binaryName ? { name: binaryName } : {}, level: compression, instant, rewrite, ...(password ? { password } : {}) })
+    encodeV2({ mime, bytes: sourceBytes, meta: { ...(binaryName ? { name: binaryName } : {}), encoding: textEncoding }, level: compression, instant, rewrite: textEncoding === "utf-8" ? rewrite : {}, ...(password ? { password } : {}) })
       .then((value) => { if (active) setPayload(value); })
       .catch((error) => { console.error(error); if (active) setPayload(""); });
     return () => { active = false; };
-  }, [sourceBytes, mime, compression, instant, rewrite, password, binaryName]);
+  }, [sourceBytes, mime, compression, instant, rewrite, password, binaryName, textEncoding]);
   const url = payload ? `${base}#${payload}` : "";
   const rawUrl = payload ? `${base}r?data=${encodeURIComponent(payload)}` : "";
   const rawSupported = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(mime.split(";")[0].trim());
@@ -265,7 +267,7 @@ function Studio() {
 
   const loadFile = async (f: File) => {
     let bytes = new Uint8Array(await f.arrayBuffer());
-    const l = langFromFilename(f.name);
+    const l = langFromFilename(f.name);\n    const fileEncoding = detectTextEncoding(bytes);
     let detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
     if (imageOptimize && detectedMime.startsWith("image/")) {
       try {
@@ -278,7 +280,7 @@ function Studio() {
     setCustomMime("");
     setBinaryName(f.name);
     if (/^text\//i.test(detectedMime) || /json|javascript|xml|svg|yaml/i.test(detectedMime)) {
-      setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(l);
+      setBinaryData(null); setTextEncoding(fileEncoding); setCode(decodeText(bytes, fileEncoding)); setLang(l);
     } else { setBinaryData(bytes); setCode(""); setLang("plaintext"); }
     toast.success(`Loaded ${f.name}`);
   };
@@ -288,14 +290,14 @@ function Studio() {
     const decoded = await decodeAny(input);
     if (decoded.status === "locked") { toast.error("Password-protected links must be opened directly to unlock."); return; }
     if (decoded.status === "ok") {
-      setMime(decoded.mime); setBinaryName(decoded.meta.name || "");
+      setMime(decoded.mime); setBinaryName(decoded.meta.name || ""); setTextEncoding((decoded.meta.encoding || "utf-8") as TextEncoding);
       if (decoded.text !== null) { setBinaryData(null); setCode(decoded.text); setLang(guessLang(decoded.mime)); }
       else { setCode(""); setBinaryData(decoded.bytes); setLang("plaintext"); }
       setImportOpen(false); setImportText(""); toast.success("Content imported"); return;
     }
     const legacy = decodePayload(input);
     if (!legacy) { toast.error(decoded.reason || "Invalid x11 link or blocked URL"); return; }
-    setBinaryData(null); setBinaryName(""); setCode(legacy.content); setMime(legacy.mime); setLang(guessLang(legacy.mime));
+    setBinaryData(null); setBinaryName(""); setTextEncoding("utf-8"); setCode(legacy.content); setMime(legacy.mime); setLang(guessLang(legacy.mime));
     setImportOpen(false); setImportText(""); toast.success("Legacy link decoded");
   };
 
@@ -549,7 +551,7 @@ function Studio() {
                       onClick={async () => {
                         const d = await decodeAny(payloadFromUrl(h.url));
                         if (d.status === "ok") {
-                          setMime(d.mime); setBinaryName(d.meta.name || "");
+                          setMime(d.mime); setBinaryName(d.meta.name || ""); setTextEncoding((d.meta.encoding || "utf-8") as TextEncoding);
                           if (d.text !== null) { setBinaryData(null); setCode(d.text); setLang(guessLang(d.mime)); }
                           else { setCode(""); setBinaryData(d.bytes); setLang("plaintext"); }
                         }

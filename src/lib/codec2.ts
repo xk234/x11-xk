@@ -48,15 +48,43 @@ async function key(password: string, salt: Uint8Array) {
   );
 }
 
-function compress(body: Uint8Array, level: Level): Uint8Array {
-  if (level === "fast") return deflateSync(body, { level: 6 });
-  if (level === "max") return deflateSync(body, { level: 9, mem: 12 });
-  let best = deflateSync(body, { level: 9, mem: 12 });
-  for (const mem of [8, 9, 10, 11] as const) {
-    const c = deflateSync(body, { level: 9, mem });
-    if (c.length < best.length) best = c;
+async function streamCompress(body: Uint8Array, format: "gzip" | "deflate"): Promise<Uint8Array> {
+  const stream = new Blob([body as BlobPart]).stream().pipeThrough(new CompressionStream(format));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function compress(body: Uint8Array, level: Level): Promise<{ bytes: Uint8Array; codec: number }> {
+  const candidates: { bytes: Uint8Array; codec: number }[] = [];
+  const add = (bytes: Uint8Array, codec = 0) => { if (bytes.length < body.length) candidates.push({ bytes, codec }); };
+  if (level === "fast") add(deflateSync(body, { level: 1, mem: 8 }));
+  else if (level === "max") add(deflateSync(body, { level: 9, mem: 12 }));
+  else {
+    const levels = level === "ultra" ? [9] : [7, 8, 9];
+    const memories = level === "ultra" ? [9, 10, 11, 12] : [8, 9, 10, 11, 12];
+    for (const l of levels) for (const mem of memories) add(deflateSync(body, { level: l as 7 | 8 | 9, mem: mem as 8 | 9 | 10 | 11 | 12 }));
   }
-  return best;
+  if (level === "dynamic" || level === "insane") {
+    for (const format of ["gzip", "deflate"] as const) {
+      try { add(await streamCompress(body, format), format === "gzip" ? 1 : 2); } catch { /* codec unavailable */ }
+    }
+  }
+  candidates.sort((a, b) => a.bytes.length - b.bytes.length);
+  return candidates[0] ?? { bytes: body, codec: 0 };
+}
+
+export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOptions = {}): Uint8Array {
+  if (!isTextMime(mime) || !Object.values(options).some(Boolean)) return bytes;
+  let text = strFromU8(bytes);
+  if (mime.includes("svg")) {
+    if (options.svgMetadata) text = text.replace(/<!--[\\s\\S]*?-->/g, "").replace(/<metadata\\b[^>]*>[\\s\\S]*?<\\/metadata>/gi, "");
+    if (options.htmlWhitespace) text = text.replace(/>\\s+</g, "><").trim();
+  } else if (mime.includes("css")) {
+    if (options.cssComments) text = text.replace(/\\/\\*[\\s\\S]*?\\*\\//g, "");
+    if (options.cssWhitespace) text = text.replace(/\\s*([{}:;,>])\\s*/g, "$1").replace(/\\s+/g, " ").trim();
+  } else if (mime.includes("html")) {
+    if (options.htmlComments) text = text.replace(/<!--(?!\\s*\\[if)[\\s\\S]*?-->/g, "");
+    if (options.htmlWhitespace) text = text.replace(/>\\s+</g, "><").trim();
+  }
+  return strToU8(text);
 }
 
 export async function encodeV2(opts: {

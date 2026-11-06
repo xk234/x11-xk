@@ -109,6 +109,7 @@ function Studio() {
   const [instant, setInstant] = useState(false);
   const [urlToolOpen, setUrlToolOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [showMobilePanel, setShowMobilePanel] = useState(false);
   const [theme, setTheme] = useState("crimson");
   const [binaryData, setBinaryData] = useState<Uint8Array | null>(null);
   const [binaryName, setBinaryName] = useState("");
@@ -293,6 +294,7 @@ function Studio() {
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload /> Open file</Button>
           <Button variant="outline" size="sm" onClick={() => setUrlToolOpen(true)}>URL tools</Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}><Link2 /> Decode link</Button>
+          <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setShowMobilePanel((v) => !v)}>Link panel</Button>
           <Button variant="ghost" size="icon" title="Update history and TODO" onClick={() => setInfoOpen(true)}>Info</Button>
           <Button variant="ghost" size="icon" title="Clear" onClick={() => { setCode(""); setBinaryData(null); setBinaryName(""); }}><Trash2 /></Button>
           <input ref={fileRef} type="file" hidden onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])} />
@@ -371,7 +373,7 @@ function Studio() {
         </div>
 
         {/* Side panel */}
-        <aside className="glass hidden min-h-0 flex-col overflow-y-auto rounded-2xl lg:flex">
+        <aside className={`glass z-30 min-h-0 flex-col overflow-y-auto rounded-2xl ${showMobilePanel ? "fixed inset-x-3 bottom-3 top-20 flex max-h-[calc(100dvh-6rem)] shadow-2xl" : "hidden"} lg:static lg:flex lg:max-h-none`}>
           <Section title="Opens as">
             <select
               aria-label="File type"
@@ -455,7 +457,7 @@ function Studio() {
               </div>
             )}
 
-            {rawUrl && <p className="mt-2 text-[10px] text-muted-foreground">{rawSupported ? "Raw URL serves this asset with cross-origin headers through the Cloudflare Pages /r function. Use it when another app needs to fetch an image or media URL. Password-protected links are not available in raw mode." : "Raw mode is available for supported images, audio, video, fonts and PDFs; this MIME type is not currently served as a raw resource."}</p>}
+            {rawUrl && <p className="mt-2 text-[10px] text-muted-foreground">{rawSupported ? "Raw URL serves this asset through the Pages /r function, including byte-range requests for media players. Very large query URLs can still be rejected by browsers or the edge; use upload-backed transfer for large files." : "Raw mode is available for supported images, audio, video, fonts and PDFs; this MIME type is not currently served as a raw resource."}</p>}
             {url && limit && (
               <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-3 gap-2 text-center">
@@ -508,6 +510,7 @@ function Studio() {
           </Section>
 
           <div className="mt-auto space-y-2 p-5 text-[11px] leading-relaxed text-muted-foreground">
+            <div className="flex justify-end lg:hidden"><Button size="sm" variant="outline" onClick={() => setShowMobilePanel(false)}>Close panel</Button></div>
             <div className="flex flex-wrap gap-2">
               <Kbd>Ctrl S</Kbd> copy link <Kbd>Ctrl ↵</Kbd> open
             </div>

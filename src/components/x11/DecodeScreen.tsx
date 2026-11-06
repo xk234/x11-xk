@@ -19,7 +19,7 @@ function run(d: OkDecoded) {
     mime = "text/html";
   } else if (mime.includes("javascript") || mime.includes("ecmascript")) {
     const js = new TextDecoder().decode(bytes).replace(/<\/script/gi, "<\\/script");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script>try{\\n${js}\\n}catch(e){const n=document.createElement("pre");n.style.cssText="white-space:pre-wrap;color:#b00020";n.textContent=e.stack||String(e);document.body.append(n)}</script></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script>try{\n${js}\n}catch(e){const n=document.createElement("pre");n.style.cssText="white-space:pre-wrap;color:#b00020";n.textContent=e.stack||String(e);document.body.append(n)}</script></body></html>`;
     bytes = new TextEncoder().encode(html);
     mime = "text/html";
   }

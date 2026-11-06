@@ -279,10 +279,10 @@ function Studio() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_360px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[1fr_360px]">
         {/* Editor + preview */}
-        <div className="flex min-h-0 min-w-0 flex-col border-r">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-card/60 px-3 py-2">
+        <div className="glass flex min-h-0 min-w-0 flex-col rounded-2xl">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-white/[0.025] px-3 py-2">
             <div className="flex items-center gap-2">
               <select
                 aria-label="Language"
@@ -306,7 +306,7 @@ function Studio() {
           </div>
 
           <div className={`grid min-h-0 flex-1 ${showPreview ? "grid-rows-2 xl:grid-cols-2 xl:grid-rows-1" : ""}`}>
-            <div className="relative min-h-0 bg-card/40">
+            <div className="relative min-h-0 bg-transparent">
               {mounted && (
                 <Suspense fallback={null}>
                   <CodeEditor value={code} language={lang} wordWrap={wrap} onChange={(value) => { setBinaryData(null); setBinaryName(""); setCode(value); }} onMount={(ed) => { editorRef.current = ed; }} />
@@ -323,8 +323,8 @@ function Studio() {
               )}
             </div>
             {showPreview && (
-              <div className="flex min-h-0 flex-col border-t xl:border-l xl:border-t-0">
-                <div className="flex items-center gap-2 border-b bg-card/60 px-3 py-1.5 text-[11px] text-muted-foreground">
+              <div className="flex min-h-0 flex-col border-t border-white/10 xl:border-l xl:border-t-0">
+                <div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.025] px-3 py-1.5 text-[11px] text-muted-foreground">
                   <span className="size-2 rounded-full bg-success" /> Live preview
                 </div>
                 {previewable ? (
@@ -345,7 +345,7 @@ function Studio() {
         </div>
 
         {/* Side panel */}
-        <aside className="hidden min-h-0 flex-col overflow-y-auto bg-card/50 lg:flex">
+        <aside className="glass hidden min-h-0 flex-col overflow-y-auto rounded-2xl lg:flex">
           <Section title="Opens as">
             <select
               aria-label="File type"

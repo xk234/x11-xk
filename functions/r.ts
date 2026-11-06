@@ -24,7 +24,7 @@ interface R2MultipartUploadLike {
 interface R2BucketLike {
   put(key: string, value: ReadableStream<Uint8Array> | ArrayBuffer, options?: { httpMetadata?: { contentType?: string; contentDisposition?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
   get(key: string, options?: { range?: { offset: number; length: number } }): Promise<StoredObject | null>;
-  createMultipartUpload(key: string, options?: { httpMetadata?: { contentType?: string; contentDisposition?: string }; customMetadata?: Record<string, string> }): R2MultipartUploadLike;
+  createMultipartUpload(key: string, options?: { httpMetadata?: { contentType?: string; contentDisposition?: string }; customMetadata?: Record<string, string> }): Promise<R2MultipartUploadLike>;
   resumeMultipartUpload(key: string, uploadId: string): R2MultipartUploadLike;
 }
 interface Env { X11_R2?: R2BucketLike; X11_UPLOAD_KEY?: string }
@@ -136,7 +136,7 @@ async function handleMultipart(request: Request, env: Env, url: URL): Promise<Re
     if (!mime) return response("Invalid Content-Type MIME value.", 415);
     const id = crypto.randomUUID().replace(/-/g, "");
     const name = String(input.name || "shared-resource").replace(/[\\r\\n"]/g, "_").slice(0, 180);
-    const upload = env.X11_R2.createMultipartUpload("x11/" + id, {
+    const upload = await env.X11_R2.createMultipartUpload("x11/" + id, {
       httpMetadata: { contentType: mime, contentDisposition: "inline" },
       customMetadata: { name, created: new Date().toISOString() },
     });

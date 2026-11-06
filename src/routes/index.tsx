@@ -407,13 +407,16 @@ function Studio() {
             <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={instant} onChange={(e) => setInstant(e.target.checked)} /> Instant run</label>
             <div className="mt-4 border-t border-white/10 pt-3">
               <div className="mb-2 text-xs font-semibold">Source shrinking · opt-in</div>
-              <p className="mb-2 text-[10px] text-muted-foreground">These rewrite source before compression. Some whitespace-sensitive documents may change; keep toggles off when exact bytes matter.</p>
+              <p className="mb-2 text-[10px] text-muted-foreground">These use syntax-aware parsers for HTML, CSS, JavaScript and JSON. Comment removal strips all comment types in the selected language; minification can change formatting. Keep them off when exact source bytes matter.</p>
               {([
                 ["htmlComments", "Strip HTML comments"],
                 ["htmlWhitespace", "Collapse inter-tag whitespace"],
                 ["cssComments", "Strip CSS comments"],
                 ["cssWhitespace", "Compact CSS whitespace"],
                 ["svgMetadata", "Remove SVG comments / metadata"],
+                ["jsComments", "Strip JavaScript / TypeScript comments (AST-safe)"],
+                ["jsMinify", "Minify JavaScript / TypeScript (AST-safe)"],
+                ["jsonMinify", "Minify JSON safely"],
               ] as const).map(([key, label]) => (
                 <label key={key} className="mt-2 flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={!!rewrite[key]} onChange={(e) => setRewrite((v) => ({ ...v, [key]: e.target.checked }))} />

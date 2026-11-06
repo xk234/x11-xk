@@ -1,5 +1,16 @@
 export const CHANGELOG: { version: string; date: string; title: string; items: string[] }[] = [
   {
+    version: "2.1",
+    date: "Nov 2026",
+    title: "Codec search and raw resources",
+    items: [
+      "Insane and Dynamic compression tiers compare Deflate with browser-native gzip / deflate candidates",
+      "Opt-in HTML, CSS and SVG source shrinking toggles before compression",
+      "Raw resource endpoint at /r/<payload> with CORS for supported passive media, fonts and documents",
+      "Raw mode is a Pages Function; normal root-fragment links remain client-side",
+    ],
+  },
+  {
     version: "2.0",
     date: "Nov 2026",
     title: "Compression 2.0 & Liquid Glass",
@@ -31,6 +42,9 @@ export const CHANGELOG: { version: string; date: string; title: string; items: s
 
 export const TODO: { text: string; done: boolean }[] = [
   { text: "Compression 2.0 for large files", done: true },
+  { text: "Add more codec engines after Ultra; benchmark Brotli, Zstandard, LZMA2, Zopfli, BZip2 and PPMd WASM builds", done: false },
+  { text: "Add an advanced compression toggles panel with parser-grade HTML/CSS/JS/SVG rewrites and dynamic best-combination search", done: false },
+  { text: "Raw resource mode for third-party image / media fetches using a CORS-enabled Pages Function", done: true },
   { text: "Password-protected links", done: true },
   { text: "Video / audio / any file support", done: true },
   { text: "Iframe embed builder", done: true },

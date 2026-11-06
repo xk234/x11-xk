@@ -37,7 +37,7 @@ Record source bytes, compressed bytes, final base64url characters, encode/decode
 
 ## Current implementation boundary
 
-Current v2 is a single-file container using fflate Deflate and base64url. Fast / Max / Ultra currently vary Deflate settings; this is not yet the planned multi-codec competition. Multi-file static project packaging, Brotli/Zstandard/LZMA WASM, cross-file dictionaries, chunking, and full project reconstruction are roadmap items, not shipped features.
+Current v2 is a single-file container using fflate Deflate and base64url. Fast / Max / Ultra / Insane / Dynamic compare the currently available Deflate and browser-native gzip/deflate candidates. Parser-based HTML, CSS, JavaScript/TypeScript and JSON rewrite passes are now wired as opt-in transformations. Brotli/Zstandard/LZMA and other specialized codecs are still not installed. Multi-file static project packaging, Brotli/Zstandard/LZMA WASM, cross-file dictionaries, chunking, and full project reconstruction are roadmap items, not shipped features.
 
 
 ## Expanded codec ladder (implementation targets)
@@ -119,3 +119,38 @@ Execution is a separate subsystem from compression. A file being compressible do
 - Separate "run existing artifact" from "compile source"; compilation toolchains are much larger.
 - Make optional runtime packs downloadable/cacheable individually instead of shipping every compiler in the initial page bundle.
 - Provide explicit estimated download size and memory requirements before enabling a runtime.
+
+
+## Expanded format and binary optimizer inventory
+
+These are candidate local libraries / WASM packs to evaluate, not all shipped dependencies:
+
+### Text and structured formats
+- HTML: parse5 tree transforms; preserve script/style/pre/textarea raw text and conditional syntax only when configured.
+- CSS: PostCSS AST comment removal; future Lightning CSS WASM/browser-compatible build for syntax-aware minification and compatibility transforms.
+- JavaScript: Babel parser/generator for syntax-aware comment removal and compact output; future Terser or esbuild-wasm for deeper compression and target-aware transforms.
+- TypeScript / JSX: Babel parser/generator; future SWC WASM or esbuild-wasm for transpilation and minification.
+- JSON: native parse/stringify compact mode, with duplicate-key and number-format caveats.
+- XML / SVG: XML parser + SVGO; do not run HTML regex rewrites over arbitrary XML.
+- YAML / TOML: YAML/TOML parsers and canonical serializers; preserve comments option where required.
+- Markdown: markdown-it/remark parse and render; source minification is not generally equivalent to preserving authored Markdown.
+- SQL: SQL parser/minifier, optional whitespace/comment removal.
+- Shell / Python / Lua / Rust / C-family: language-specific parsers or formatters; never generic regex comment stripping.
+
+### Image, font, audio and video optimization
+- PNG: oxipng, zopflipng, pngquant (lossy), optipng.
+- JPEG: mozjpeg, jpegli, jpegoptim; keep metadata stripping separately configurable.
+- WebP / AVIF / JPEG XL: Squoosh codecs or equivalent local WASM encoders, gated by browser and target support.
+- GIF: gifsicle; preserve animation and disposal semantics.
+- SVG: SVGO with per-plugin controls and ID/accessibility preservation.
+- Fonts: WOFF2 encoder/decoder, fonttools WASM experiments, optional glyph subsetting.
+- Audio: Opus, FLAC, MP3 encoders; preserve metadata and channel/sample-rate settings.
+- Video: FFmpeg WASM or WebCodecs where available; high CPU/memory use means opt-in only.
+- Archives: ZIP/Deflate, Zstandard, Brotli, LZMA2/XZ, BZip2 and 7z-compatible pack formats.
+
+### Codec search controls to expose
+- Engine allowlist, per-engine level/quality, dictionary mode, block size, window/memory cap, thread count where supported.
+- Speed-vs-ratio target, maximum encode time, maximum memory, worker count and low-memory preset.
+- Preserve original / lossless only / lossy allowed; max dimension, quality, chroma subsampling, metadata and animation toggles.
+- Per-file vs shared dictionary, cross-file deduplication, solid archive mode, chunk size and integrity checks.
+- Benchmark actual final URL length and decode cost; never choose a candidate just because its raw compressed stream is smaller.

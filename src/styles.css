@@ -181,7 +181,6 @@
 @utility glass {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent);
   background:
     linear-gradient(145deg, color-mix(in oklab, var(--foreground) 8%, transparent), transparent 42%),
@@ -193,7 +192,6 @@
 @utility liquid {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent);
   background:
     linear-gradient(145deg, color-mix(in oklab, white 9%, transparent), transparent 48%),

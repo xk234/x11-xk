@@ -14,7 +14,7 @@ import { InfoDialog } from "@/components/x11/InfoDialog";
 import { UrlToolDialog } from "@/components/x11/UrlToolDialog";
 import { decodePayload, formatBytes, payloadFromUrl } from "@/lib/codec";
 import { decodeAny, encodeV2, processImage, type Level, type RewriteOptions } from "@/lib/codec2";
-import { createLaunchUrl } from "@/lib/launch";
+import { createLaunchUrl, createLaunchUrlFromBlob } from "@/lib/launch";
 import { decodeText, detectTextEncoding, encodeText, type TextEncoding } from "@/lib/text-encoding";
 import { EXAMPLES, LANGS, MIMES, langFromFilename } from "@/lib/examples";
 
@@ -118,6 +118,7 @@ function Studio() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [theme, setTheme] = useState("crimson");
   const [binaryData, setBinaryData] = useState<Uint8Array | null>(null);
+  const [largeFile, setLargeFile] = useState<File | null>(null);
   const [binaryName, setBinaryName] = useState("");
   const [imageOptimize, setImageOptimize] = useState(true);
   const [imageMaxSide, setImageMaxSide] = useState(4096);
@@ -163,19 +164,20 @@ function Studio() {
 
   const base = mounted ? `${location.origin}/` : "";
   const [payload, setPayload] = useState("");
-  const sourceBytes = useMemo(() => binaryData ?? encodeText(previewCode, textEncoding), [binaryData, previewCode, textEncoding]);
+  const sourceBytes = useMemo(() => largeFile ? new Uint8Array(0) : (binaryData ?? encodeText(previewCode, textEncoding)), [largeFile, binaryData, previewCode, textEncoding]);
   useEffect(() => {
     let active = true;
-    if (!sourceBytes.length) { setPayload(""); return; }
+    if (largeFile || !sourceBytes.length) { setPayload(""); return; }
     encodeV2({ mime, bytes: sourceBytes, meta: { ...(binaryName ? { name: binaryName } : {}), encoding: textEncoding }, level: compression, instant, rewrite: textEncoding === "utf-8" ? rewrite : {}, ...(password ? { password } : {}) })
       .then((value) => { if (active) setPayload(value); })
       .catch((error) => { console.error(error); if (active) setPayload(""); });
     return () => { active = false; };
-  }, [sourceBytes, mime, compression, instant, rewrite, password, binaryName, textEncoding]);
+  }, [sourceBytes, largeFile, mime, compression, instant, rewrite, password, binaryName, textEncoding]);
   const url = payload ? `${base}#${payload}` : "";
   const rawUrl = payload ? `${base}r?data=${encodeURIComponent(payload)}` : "";
   const rawSupported = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(mime.split(";")[0].trim());
-  const origBytes = sourceBytes.length;
+  const hasSource = !!largeFile || sourceBytes.length > 0;
+  const origBytes = largeFile?.size ?? sourceBytes.length;
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;
 
   const limit =
@@ -209,33 +211,34 @@ function Studio() {
   }, [url, remember]);
 
   const openBlob = () => {
-    if (!sourceBytes.length) return;
-    const objectUrl = createLaunchUrl(sourceBytes, mime);
+    if (!hasSource) return;
+    const objectUrl = largeFile ? createLaunchUrlFromBlob(largeFile, mime) : createLaunchUrl(sourceBytes, mime);
     window.open(objectUrl, "_blank", "noopener,noreferrer");
   };
 
   const uploadRaw = async () => {
-    if (!sourceBytes.length || !uploadKey) return;
+    if (!hasSource || !uploadKey) return;
     const sessionKey = "x11:r2-upload-session";
     const partSize = 8 * 1024 * 1024;
     try {
-      const hashBuffer = await crypto.subtle.digest("SHA-256", sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer);
-      const fingerprint = Array.from(new Uint8Array(hashBuffer)).map((v) => v.toString(16).padStart(2, "0")).join("");
+      const content = largeFile ?? new Blob([sourceBytes as BlobPart]);
+      const contentSize = content.size;
+      const fingerprint = largeFile ? [largeFile.name, largeFile.size, largeFile.lastModified, mime].join(":") : Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer))).map((v) => v.toString(16).padStart(2, "0")).join("");
       type Session = { id: string; uploadId: string; mime: string; size: number; name: string; fingerprint: string; parts: { partNumber: number; etag: string }[] };
       let session = JSON.parse(localStorage.getItem(sessionKey) || "null") as Session | null;
-      if (!session || session.fingerprint !== fingerprint || session.mime !== mime || session.size !== sourceBytes.length) {
+      if (!session || session.fingerprint !== fingerprint || session.mime !== mime || session.size !== contentSize) {
         const start = await fetch(base + "r?multipart=start", { method: "POST", headers: { "Content-Type": "application/json", "X-X11-Upload-Key": uploadKey }, body: JSON.stringify({ mime, name: binaryName || "x11-resource" }) });
         const created = await start.json() as { id?: string; uploadId?: string };
         if (!start.ok || !created.id || !created.uploadId) throw new Error("Could not start multipart upload (HTTP " + start.status + ")");
-        session = { id: created.id, uploadId: created.uploadId, mime, size: sourceBytes.length, name: binaryName || "x11-resource", fingerprint, parts: [] };
+        session = { id: created.id, uploadId: created.uploadId, mime, size: contentSize, name: binaryName || "x11-resource", fingerprint, parts: [] };
         localStorage.setItem(sessionKey, JSON.stringify(session));
       }
-      const blob = new Blob([sourceBytes as BlobPart]);
+      const blob = content;
       const completed = new Set(session.parts.map((part) => part.partNumber));
-      const totalParts = Math.ceil(sourceBytes.length / partSize);
+      const totalParts = Math.ceil(contentSize / partSize);
       for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
         const startOffset = (partNumber - 1) * partSize;
-        const endOffset = Math.min(sourceBytes.length, startOffset + partSize);
+        const endOffset = Math.min(contentSize, startOffset + partSize);
         if (!completed.has(partNumber)) {
           const partResponse = await fetch(base + "r?multipart=part&id=" + session.id + "&uploadId=" + encodeURIComponent(session.uploadId) + "&partNumber=" + partNumber, { method: "POST", headers: { "X-X11-Upload-Key": uploadKey, "Content-Type": "application/octet-stream" }, body: blob.slice(startOffset, endOffset) });
           const part = await partResponse.json() as { partNumber?: number; etag?: string };
@@ -243,7 +246,7 @@ function Studio() {
           session.parts.push({ partNumber, etag: part.etag });
           localStorage.setItem(sessionKey, JSON.stringify(session));
         }
-        setUploadProgress(Math.round(endOffset / sourceBytes.length * 100));
+        setUploadProgress(Math.round(endOffset / contentSize * 100));
       }
       const finish = await fetch(base + "r?multipart=complete&id=" + session.id + "&uploadId=" + encodeURIComponent(session.uploadId), { method: "POST", headers: { "X-X11-Upload-Key": uploadKey, "Content-Type": "application/json" }, body: JSON.stringify({ parts: session.parts }) });
       const result = await finish.json() as { url?: string };
@@ -257,20 +260,28 @@ function Studio() {
     }
   };
   const download = () => {
-    if (!sourceBytes.length) return;
+    if (!hasSource) return;
     const ext = mime.includes("html") ? "html" : mime.includes("svg") ? "svg" : mime.includes("json") ? "json" : mime.includes("css") ? "css" : mime.includes("javascript") ? "js" : "bin";
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([sourceBytes as BlobPart], { type: mime }));
+    a.href = URL.createObjectURL(largeFile ?? new Blob([sourceBytes as BlobPart], { type: mime }));
     a.download = binaryName || `x11-export.${ext}`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
 
   const loadFile = async (f: File) => {
-    let bytes = new Uint8Array(await f.arrayBuffer());
     const l = langFromFilename(f.name);
+    const detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
+    const textLike = /^text\//i.test(detectedMime) || /json|javascript|xml|svg|yaml|typescript/i.test(detectedMime);
+    if (f.size > 20 * 1024 * 1024) {
+      setLargeFile(f); setBinaryData(null); setCode(""); setPreviewCode(""); setMime(detectedMime);
+      setCustomMimeOpen(false); setCustomMime(""); setBinaryName(f.name); setLang(textLike ? l : "plaintext"); setTextEncoding("utf-8");
+      toast.success("Large file staged without loading it into memory", { description: "Use R2 multipart upload or Open Blob." });
+      return;
+    }
+    setLargeFile(null);
+    let bytes = new Uint8Array(await f.arrayBuffer());
     const fileEncoding = detectTextEncoding(bytes);
-    let detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
     if (imageOptimize && detectedMime.startsWith("image/")) {
       try {
         const processed = await processImage(new Blob([bytes as BlobPart], { type: detectedMime }), { maxSide: imageMaxSide, quality: imageQuality, format: imageFormat });
@@ -292,14 +303,14 @@ function Studio() {
     const decoded = await decodeAny(input);
     if (decoded.status === "locked") { toast.error("Password-protected links must be opened directly to unlock."); return; }
     if (decoded.status === "ok") {
-      setMime(decoded.mime); setBinaryName(decoded.meta.name || ""); setTextEncoding((decoded.meta.encoding || "utf-8") as TextEncoding);
+      setLargeFile(null); setMime(decoded.mime); setBinaryName(decoded.meta.name || ""); setTextEncoding((decoded.meta.encoding || "utf-8") as TextEncoding);
       if (decoded.text !== null) { setBinaryData(null); setCode(decoded.text); setLang(guessLang(decoded.mime)); }
       else { setCode(""); setBinaryData(decoded.bytes); setLang("plaintext"); }
       setImportOpen(false); setImportText(""); toast.success("Content imported"); return;
     }
     const legacy = decodePayload(input);
     if (!legacy) { toast.error(decoded.reason || "Invalid x11 link or blocked URL"); return; }
-    setBinaryData(null); setBinaryName(""); setTextEncoding("utf-8"); setCode(legacy.content); setMime(legacy.mime); setLang(guessLang(legacy.mime));
+    setLargeFile(null); setBinaryData(null); setBinaryName(""); setTextEncoding("utf-8"); setCode(legacy.content); setMime(legacy.mime); setLang(guessLang(legacy.mime));
     setImportOpen(false); setImportText(""); toast.success("Legacy link decoded");
   };
 
@@ -397,7 +408,8 @@ function Studio() {
                 </Suspense>
               )}
               {binaryData && <div className="absolute inset-x-4 top-4 rounded-xl border bg-card/90 p-4 text-sm"><strong>{binaryName || "Binary file"}</strong><p className="mt-1 text-muted-foreground">{mime} · {formatBytes(binaryData.length)} · raw bytes</p></div>}
-              {!code && !binaryData && (
+              {largeFile && <div className="absolute inset-x-4 top-4 rounded-xl border bg-card/90 p-4 text-sm"><strong>{largeFile.name}</strong><p className="mt-1 text-muted-foreground">{mime} · {formatBytes(largeFile.size)} · streamed from the selected local file</p></div>}
+              {!code && !binaryData && !largeFile && (
                 <div className="pointer-events-none absolute inset-0 grid place-items-center">
                   <div className="text-center text-sm text-muted-foreground">
                     <p className="font-medium text-foreground">Paste or type code here</p>
@@ -512,9 +524,9 @@ function Studio() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button variant="hero" onClick={copy} disabled={!url}><Copy /> Copy</Button>
               <Button variant="outline" onClick={open} disabled={!url}><ExternalLink /> Open</Button>
-              <Button variant="outline" size="sm" onClick={openBlob} disabled={!sourceBytes.length}><ExternalLink /> Open Blob</Button>
+              <Button variant="outline" size="sm" onClick={openBlob} disabled={!hasSource}><ExternalLink /> Open Blob</Button>
               <Button variant="outline" size="sm" onClick={async () => { if (!rawUrl) return; await navigator.clipboard.writeText(rawUrl); toast.success("Raw resource URL copied"); }} disabled={!rawUrl || !!password || !rawSupported}><Link2 /> Copy raw URL</Button>
-              <Button variant="outline" size="sm" onClick={download} disabled={!sourceBytes.length}><Download /> Download</Button>
+              <Button variant="outline" size="sm" onClick={download} disabled={!hasSource}><Download /> Download</Button>
               <Button variant={showQr ? "secondary" : "outline"} size="sm" onClick={() => setShowQr(!showQr)} disabled={!url}><QrCode /> QR code</Button>
             </div>
             {showQr && url && (
@@ -527,7 +539,7 @@ function Studio() {
             <div className="mt-3 space-y-2 rounded-lg border bg-background/40 p-3">
               <div className="text-xs font-medium">Large raw link · R2 storage</div>
               <input type="password" value={uploadKey} onChange={(e) => setUploadKey(e.target.value)} placeholder="Cloudflare X11_UPLOAD_KEY" className="h-9 w-full rounded-md border bg-background px-3 text-xs" />
-              <Button variant="outline" size="sm" className="w-full" onClick={uploadRaw} disabled={!sourceBytes.length || !uploadKey.trim()}><Upload /> Upload / resume large raw link</Button>
+              <Button variant="outline" size="sm" className="w-full" onClick={uploadRaw} disabled={!hasSource || !uploadKey.trim()}><Upload /> Upload / resume large raw link</Button>
               {uploadProgress > 0 && uploadProgress < 100 && <p className="text-[10px] text-muted-foreground">Transfer progress: {uploadProgress}%</p>}
               {uploadProgress === 100 && <p className="text-[10px] text-success">All chunks sent; finalizing resource…</p>}
               {uploadedRawUrl && <p className="break-all text-[10px] text-muted-foreground">Stored link: {uploadedRawUrl}</p>}

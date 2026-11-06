@@ -90,7 +90,7 @@ export async function encodeV2(opts: {
 
 export function isUrlSource(value: string): boolean {
   const s = value.trim();
-  return /^blob:/i.test(s) || /^https?:\/\//i.test(s) || /^\/\//.test(s) || /^[\w.-]+\.[a-z]{2,}(?::\\d+)?(?:[/?#]|$)/i.test(s);
+  return /^blob:/i.test(s) || /^https?:\/\//i.test(s) || /^\/\//.test(s) || /^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i.test(s);
 }
 
 /** Browser-only URL import. Cross-origin sources must allow CORS. */

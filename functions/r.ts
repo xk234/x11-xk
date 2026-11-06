@@ -46,6 +46,7 @@ function reply(body: BodyInit | null, status: number, mime = "text/plain; charse
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Range, Content-Type");
   headers.set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+  headers.set("Accept-Ranges", "bytes");
   headers.set("Cross-Origin-Resource-Policy", "cross-origin");
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Cache-Control", "public, max-age=3600");
@@ -55,7 +56,11 @@ function reply(body: BodyInit | null, status: number, mime = "text/plain; charse
 export async function onRequest({ request }: { request: Request }) {
   if (request.method === "OPTIONS") return reply(null, 204);
   if (request.method !== "GET" && request.method !== "HEAD") return reply("Method not allowed", 405, undefined, { Allow: "GET, HEAD, OPTIONS" });
-  const payload = new URL(request.url).searchParams.get("data") ?? "";
+  const url = new URL(request.url);
+  if (url.searchParams.get("health") === "1") {
+    return reply(JSON.stringify({ ok: true, endpoint: "/r", format: "x11-v2", range: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+  }
+  const payload = url.searchParams.get("data") ?? "";
   if (!payload || payload.length > MAX_PAYLOAD_CHARS) return reply("Missing or oversized ?data= payload", 400);
   try {
     const { mime, bytes } = await unpack(payload);
@@ -64,10 +69,25 @@ export async function onRequest({ request }: { request: Request }) {
     const allowed = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|font\/[a-z0-9.+-]+|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream)|application\/vnd\.ms-fontobject)$/;
     if (!allowed.test(safeMime)) return reply("Raw mode only serves passive images, audio, video, fonts and documents.", 415);
     const headers: Record<string, string> = {
-      "Content-Length": String(bytes.byteLength),
       "Content-Disposition": "inline",
     };
     if (safeMime === "image/svg+xml") headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:";
+    const range = request.headers.get("Range");
+    if (range) {
+      const match = /^bytes=(\\d*)-(\\d*)$/.exec(range.trim());
+      if (!match || (!match[1] && !match[2])) return reply("Invalid byte range", 416, undefined, { "Content-Range": `bytes */${bytes.byteLength}` });
+      let start = match[1] ? Number(match[1]) : Math.max(0, bytes.byteLength - Number(match[2]));
+      let end = match[2] ? Number(match[2]) : bytes.byteLength - 1;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= bytes.byteLength) {
+        return reply("Requested range is not satisfiable", 416, undefined, { "Content-Range": `bytes */${bytes.byteLength}` });
+      }
+      end = Math.min(end, bytes.byteLength - 1);
+      const slice = bytes.subarray(start, end + 1);
+      headers["Content-Length"] = String(slice.byteLength);
+      headers["Content-Range"] = `bytes ${start}-${end}/${bytes.byteLength}`;
+      return reply(request.method === "HEAD" ? null : slice as BodyInit, 206, safeMime, headers);
+    }
+    headers["Content-Length"] = String(bytes.byteLength);
     return reply(request.method === "HEAD" ? null : bytes as BodyInit, 200, safeMime, headers);
   } catch (error) {
     return reply(error instanceof Error ? error.message : "Unable to decode raw resource", 400);

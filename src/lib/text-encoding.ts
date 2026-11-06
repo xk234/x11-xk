@@ -25,6 +25,7 @@ export function encodeText(source: string, encoding: TextEncoding): Uint8Array {
 }
 
 export function decodeText(bytes: Uint8Array, encoding: TextEncoding): string {
+  if (encoding === "iso-8859-1") return Array.from(bytes, (value) => String.fromCharCode(value)).join("");
   try { return new TextDecoder(encoding).decode(bytes); }
   catch { return new TextDecoder("utf-8").decode(bytes); }
 }

@@ -177,10 +177,10 @@ function Studio() {
   }, [url, remember]);
 
   const open = useCallback(() => {
-    if (!url) { toast.error("Nothing to open yet"); return; }
+    if (!payload) { toast.error("Nothing to open yet"); return; }
     remember();
-    window.open(url, "_blank", "noopener");
-  }, [url, remember]);
+    window.open(`${location.origin}/doc.write#${payload}`, "_blank", "noopener,noreferrer");
+  }, [payload, remember]);
 
   const download = () => {
     if (!sourceBytes.length) return;

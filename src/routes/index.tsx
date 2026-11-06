@@ -151,7 +151,7 @@ function Studio() {
     return () => clearTimeout(t);
   }, [code, mime, mounted]);
 
-  const base = mounted ? location.origin : "";
+  const base = mounted ? `${location.origin}/` : "";
   const [payload, setPayload] = useState("");
   const sourceBytes = useMemo(() => binaryData ?? new TextEncoder().encode(previewCode), [binaryData, previewCode]);
   useEffect(() => {

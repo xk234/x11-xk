@@ -67,7 +67,8 @@ function Index() {
 
 function previewDocument(code: string, mime: string) {
   if (mime.includes("css")) {
-    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${code}</style></head><body><main id="x11-css-preview"><h1>CSS preview</h1><p>Your stylesheet is running in this isolated preview.</p><button>Example button</button></main></body></html>`;
+    const safeCss = code.replace(/<\/style/gi, "<\\/style");
+    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${safeCss}</style></head><body><main id="x11-css-preview"><h1>CSS preview</h1><p>Your stylesheet is running in this isolated preview.</p><button>Example button</button></main></body></html>`;
   }
   if (mime.includes("javascript") || mime.includes("ecmascript")) {
     const safeCode = code.replace(/<\/script/gi, "<\\/script");

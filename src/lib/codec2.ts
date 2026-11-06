@@ -75,14 +75,14 @@ export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOpt
   if (!isTextMime(mime) || !Object.values(options).some(Boolean)) return bytes;
   let text = strFromU8(bytes);
   if (mime.includes("svg")) {
-    if (options.svgMetadata) text = text.replace(/<!--[\\s\\S]*?-->/g, "").replace(/<metadata\\b[^>]*>[\\s\\S]*?<\\/metadata>/gi, "");
-    if (options.htmlWhitespace) text = text.replace(/>\\s+</g, "><").trim();
+    if (options.svgMetadata) text = text.replace(/<!--[\s\S]*?-->/g, "").replace(/<metadata\b[^>]*>[\s\S]*?<\/metadata>/gi, "");
+    if (options.htmlWhitespace) text = text.replace(/>\s+</g, "><").trim();
   } else if (mime.includes("css")) {
-    if (options.cssComments) text = text.replace(/\\/\\*[\\s\\S]*?\\*\\//g, "");
-    if (options.cssWhitespace) text = text.replace(/\\s*([{}:;,>])\\s*/g, "$1").replace(/\\s+/g, " ").trim();
+    if (options.cssComments) text = text.replace(/\/\*[\s\S]*?\*\//g, "");
+    if (options.cssWhitespace) text = text.replace(/\s*([{}:;,>])\s*/g, "$1").replace(/\s+/g, " ").trim();
   } else if (mime.includes("html")) {
-    if (options.htmlComments) text = text.replace(/<!--(?!\\s*\\[if)[\\s\\S]*?-->/g, "");
-    if (options.htmlWhitespace) text = text.replace(/>\\s+</g, "><").trim();
+    if (options.htmlComments) text = text.replace(/<!--(?!\s*\[if)[\s\S]*?-->/g, "");
+    if (options.htmlWhitespace) text = text.replace(/>\s+</g, "><").trim();
   }
   return strToU8(text);
 }
@@ -92,7 +92,8 @@ export async function encodeV2(opts: {
 }): Promise<string> {
   const mimeB = strToU8(opts.mime);
   const metaB = strToU8(JSON.stringify(opts.meta ?? {}));
-  const source = rewriteText(opts.bytes, opts.mime, opts.rewrite);\n  const body = new Uint8Array(4 + mimeB.length + metaB.length + source.length);
+  const source = rewriteText(opts.bytes, opts.mime, opts.rewrite);
+  const body = new Uint8Array(4 + mimeB.length + metaB.length + source.length);
   const dv = new DataView(body.buffer);
   dv.setUint16(0, mimeB.length);
   body.set(mimeB, 2);
@@ -102,8 +103,12 @@ export async function encodeV2(opts: {
 
   let flags = 0;
   let payload: Uint8Array = body;
-  const packed = compress(body, opts.level ?? "max");
-  if (packed.length < body.length) { payload = packed; flags |= F_DEFLATE; }
+  const packed = await compress(body, opts.level ?? "max");
+  if (packed.bytes.length < body.length) {
+    payload = packed.bytes; flags |= F_DEFLATE;
+    if (packed.codec === 1) flags |= F_CODEC_GZIP;
+    if (packed.codec === 2) flags |= F_CODEC_DEFLATE;
+  }
   if (opts.instant) flags |= F_INSTANT;
   if (opts.password) {
     flags |= F_ENC;
@@ -182,7 +187,13 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
     } catch { return { status: "error", reason: "Wrong password" }; }
   }
   try {
-    if (flags & F_DEFLATE) {\n      const codec = flags & 24;\n      if (codec === F_CODEC_GZIP || codec === F_CODEC_DEFLATE) {\n        const format = codec === F_CODEC_GZIP ? "gzip" : "deflate";\n        body = new Uint8Array(await new Response(new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream(format))).arrayBuffer());\n      } else body = inflateSync(body);\n    }
+    if (flags & F_DEFLATE) {
+      const codec = flags & 24;
+      if (codec === F_CODEC_GZIP || codec === F_CODEC_DEFLATE) {
+        const format = codec === F_CODEC_GZIP ? "gzip" : "deflate";
+        body = new Uint8Array(await new Response(new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream(format))).arrayBuffer());
+      } else body = inflateSync(body);
+    }
     const dv = new DataView(body.buffer, body.byteOffset, body.byteLength);
     const ml = dv.getUint16(0);
     const mime = strFromU8(body.subarray(2, 2 + ml));

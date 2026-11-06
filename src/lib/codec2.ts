@@ -100,7 +100,7 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
   let raw: Uint8Array;
   try { raw = b64urlDecode(payload.slice(1)); } catch { return { status: "error", reason: "The link is corrupted" }; }
   if (raw[0] !== 2) return { status: "error", reason: "Made by a newer x11 version" };
-  const flags = raw[1];
+  const flags = raw[1] ?? 0;
   const instant = !!(flags & F_INSTANT);
   let body = raw.subarray(2);
   if (flags & F_ENC) {
@@ -127,7 +127,7 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
 
 export function isLocked(payload: string): boolean {
   if (payload[0] !== "~") return false;
-  try { return !!(b64urlDecode(payload.slice(1, 8))[1] & F_ENC); } catch { return false; }
+  try { return !!((b64urlDecode(payload.slice(1, 8))[1] ?? 0) & F_ENC); } catch { return false; }
 }
 
 /** Re-encode an image in the browser. Returns null if not resizable (e.g. GIF/SVG). */
@@ -140,7 +140,8 @@ export async function processImage(
   const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
-  const ctx = c.getContext("2d")!;
+  const ctx = c.getContext("2d");
+  if (!ctx) return null;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(bmp, 0, 0, w, h);
   const type = o.format === "original" ? file.type : o.format;

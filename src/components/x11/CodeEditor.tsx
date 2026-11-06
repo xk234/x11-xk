@@ -43,7 +43,7 @@ export default function CodeEditor({ value, language, wordWrap, onChange, onMoun
           },
         });
       }}
-      onMount={onMount}
+      {...(onMount ? { onMount } : {})}
       loading={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading editor…</div>}
       options={{
         fontSize: 13.5,

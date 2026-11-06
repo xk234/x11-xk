@@ -39,18 +39,18 @@ export function UrlToolDialog({ onClose, onFetched, onEmbed }: Props) {
 
   const doFetch = async () => {
     const u = normalized();
-    if (!u) return toast.error("Enter a valid URL");
+    if (!u) { toast.error("Enter a valid URL"); return; }
     setBusy(true);
     try {
       let mime = "", bytes: Uint8Array | null = null;
       try {
         const r = await fetch(u);
-        if (r.ok) { mime = (r.headers.get("content-type") || "").split(";")[0]; bytes = new Uint8Array(await r.arrayBuffer()); }
+        if (r.ok) { mime = (r.headers.get("content-type") || "").split(";")[0] ?? ""; bytes = new Uint8Array(await r.arrayBuffer()); }
       } catch { /* CORS — fall back to server */ }
       if (!bytes) {
         const r = await fetchRemote({ data: { url: u } });
         if (!r.ok) throw new Error(r.error);
-        mime = r.mime;
+        mime = r.mime ?? "";
         bytes = b64urlDecode(r.b64.replace(/\+/g, "-").replace(/\//g, "_"));
       }
       const name = new URL(u).pathname.split("/").pop() || new URL(u).hostname;
@@ -63,7 +63,7 @@ export function UrlToolDialog({ onClose, onFetched, onEmbed }: Props) {
 
   const doEmbed = () => {
     const u = normalized();
-    if (!u) return toast.error("Enter a valid URL");
+    if (!u) { toast.error("Enter a valid URL"); return; }
     const host = new URL(u).hostname;
     const t = useTitle ? (title.trim() || host) : "";
     const attrs = [

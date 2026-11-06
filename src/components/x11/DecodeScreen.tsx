@@ -3,28 +3,12 @@ import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/codec";
 import { decodeAny, type Decoded } from "@/lib/codec2";
+import { createLaunchUrl } from "@/lib/launch";
 
 export type OkDecoded = Extract<Decoded, { status: "ok" }>;
 
 function run(d: OkDecoded) {
-  let bytes = d.bytes;
-  let mime = d.mime;
-
-  // CSS and JavaScript are source resources, not standalone browser documents.
-  // Wrap them in a tiny HTML document so a root-fragment link actually runs them.
-  if (mime.includes("css")) {
-    const css = new TextDecoder().decode(bytes).replace(/<\/style/gi, "<\\/style");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><main><h1>x11 CSS document</h1><p>The linked stylesheet is active on this page.</p><button>Example button</button></main></body></html>`;
-    bytes = new TextEncoder().encode(html);
-    mime = "text/html";
-  } else if (mime.includes("javascript") || mime.includes("ecmascript")) {
-    const js = new TextDecoder().decode(bytes).replace(/<\/script/gi, "<\\/script");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script>try{\n${js}\n}catch(e){const n=document.createElement("pre");n.style.cssText="white-space:pre-wrap;color:#b00020";n.textContent=e.stack||String(e);document.body.append(n)}</script></body></html>`;
-    bytes = new TextEncoder().encode(html);
-    mime = "text/html";
-  }
-
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mime }));
+  const url = createLaunchUrl(d.bytes, d.mime);
   location.replace(url);
 }
 

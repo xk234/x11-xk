@@ -90,7 +90,7 @@ export async function encodeV2(opts: {
 
 export function isUrlSource(value: string): boolean {
   const s = value.trim();
-  return /^blob:/i.test(s) || /^https?:\\/\\//i.test(s) || /^\\/\\//.test(s) || /^[\\w.-]+\\.[a-z]{2,}(?::\\d+)?(?:[/?#]|$)/i.test(s);
+  return /^blob:/i.test(s) || /^https?:\/\//i.test(s) || /^\/\//.test(s) || /^[\w.-]+\.[a-z]{2,}(?::\\d+)?(?:[/?#]|$)/i.test(s);
 }
 
 /** Browser-only URL import. Cross-origin sources must allow CORS. */
@@ -98,10 +98,10 @@ async function decodeUrlSource(input: string): Promise<Decoded> {
   const raw = input.trim();
   const candidates: string[] = [];
   try {
-    if (/^blob:/i.test(raw) || /^https?:\\/\\//i.test(raw)) candidates.push(raw);
+    if (/^blob:/i.test(raw) || /^https?:\/\//i.test(raw)) candidates.push(raw);
     else if (raw.startsWith("//")) candidates.push(new URL(raw, location.href).toString());
     else {
-      const host = raw.replace(/^\\/+/, "");
+      const host = raw.replace(/^\/+/, "");
       candidates.push(new URL("https://" + host).toString());
       if (location.protocol !== "https:") candidates.push(new URL("http://" + host).toString());
     }

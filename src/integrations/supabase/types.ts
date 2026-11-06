@@ -14,13 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      visits: {
+        Row: {
+          created_at: string
+          device_hash: string
+          id: number
+          ip_hash: string
+          kind: string
+          network_hash: string
+        }
+        Insert: {
+          created_at?: string
+          device_hash: string
+          id?: never
+          ip_hash: string
+          kind?: string
+          network_hash: string
+        }
+        Update: {
+          created_at?: string
+          device_hash?: string
+          id?: never
+          ip_hash?: string
+          kind?: string
+          network_hash?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      visit_stats: {
+        Args: { p_device: string; p_ip: string; p_net: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

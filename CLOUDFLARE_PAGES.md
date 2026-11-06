@@ -1,6 +1,6 @@
 # Cloudflare Pages deployment
 
-This branch is configured as a client-only TanStack Start SPA. It does not need a Worker, Pages Function, Supabase project, database, server secrets, or server runtime.
+This branch is configured as a client-only TanStack Start SPA. It does not need a Worker, Pages Function, Supabase project, database, server secrets, or server runtime. The SPA shell is emitted as `dist/client/index.html`; do not add a catch-all `_redirects` rule for `/_shell.html`. Cloudflare Pages canonicalizes `.html` URLs, while its default SPA fallback serves the root `index.html` for unknown paths.
 
 ## Build settings
 
@@ -21,3 +21,12 @@ Connect `xk234/x11-xk` and select the `x11-recovery` branch. The build workflow 
 - Blob URLs are temporary browser references, not durable share URLs. `blob:null/...` may not be readable outside the context that created it.
 
 All payload encoding, compression, password encryption, decoding, previews, and local history run in the browser. Site-wide visit counts and IP/network analytics are not available in a static-only deployment; no IP or network identifiers are collected.
+
+
+## Isolated document URL
+
+A decoded document can be opened at:
+
+`https://x11-xk.pages.dev/doc.write#PAYLOAD`
+
+The route decodes the fragment locally and renders HTML/SVG inside a sandboxed iframe with an opaque origin. This is the safe static equivalent of opening a document in a separate tab. The opener cannot use `window.open(url).document.write(...)` against a cross-origin window; browser same-origin rules prohibit that. A static Pages site also cannot alter another site's response headers or bypass its CORS policy.

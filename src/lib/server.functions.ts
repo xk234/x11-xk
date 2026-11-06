@@ -26,7 +26,7 @@ export const recordVisit = createServerFn({ method: "POST" })
         getRequestHeader("x-forwarded-for")?.split(",")[0]?.trim() ||
         "unknown";
       const net = ip.includes(":") ? ip.split(":").slice(0, 4).join(":") : ip.split(".").slice(0, 3).join(".");
-      const salt = "x11-visits:" + (process.env.SUPABASE_URL ?? "");
+      const salt = "x11-visits:" + (process.env['SUPABASE_URL'] ?? "");
       const [deviceHash, ipHash, networkHash] = await Promise.all([
         sha(salt + "d:" + data.deviceId), sha(salt + "i:" + ip), sha(salt + "n:" + net),
       ]);

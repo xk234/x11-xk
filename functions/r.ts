@@ -36,7 +36,7 @@ function decode64(input: string): Uint8Array {
   return bytes;
 }
 
-async function unpack(payload: string): Promise<{ mime: string; bytes: Uint8Array }> {
+async function unpack(payload: string): Promise<{ mime: string; encoding?: string; bytes: Uint8Array }> {
   if (!payload.startsWith("~")) throw new Error("Raw mode requires an unencrypted v2 payload");
   const raw = decode64(payload.slice(1));
   if (raw.length < 2 || raw[0] !== 2) throw new Error("Unsupported x11 payload version");
@@ -56,9 +56,15 @@ async function unpack(payload: string): Promise<{ mime: string; bytes: Uint8Arra
   if (mimeLength > body.length - 4) throw new Error("Invalid MIME header");
   const mime = new TextDecoder().decode(body.subarray(2, 2 + mimeLength));
   const metaLength = view.getUint16(2 + mimeLength);
-  const start = 4 + mimeLength + metaLength;
+  const metaStart = 4 + mimeLength;
+  const start = metaStart + metaLength;
   if (start > body.length) throw new Error("Invalid metadata header");
-  return { mime, bytes: body.slice(start) };
+  let encoding: string | undefined;
+  try {
+    const meta = JSON.parse(new TextDecoder().decode(body.subarray(metaStart, start))) as { encoding?: string };
+    if (meta.encoding && /^[a-z0-9._-]{1,40}$/i.test(meta.encoding)) encoding = meta.encoding.toLowerCase();
+  } catch { /* metadata is optional for raw charset handling */ }
+  return { mime, encoding, bytes: body.slice(start) };
 }
 
 function validMime(input: string): string | null {
@@ -242,9 +248,9 @@ export async function onRequest({ request, env }: { request: Request; env: Env }
   const payload = url.searchParams.get("data") ?? "";
   if (!payload || payload.length > MAX_PAYLOAD_CHARS) return response("Missing or oversized ?data= payload.", 400);
   try {
-    const { mime: rawMime, bytes } = await unpack(payload);
+    const { mime: rawMime, encoding, bytes } = await unpack(payload);
     if (bytes.byteLength > MAX_INLINE_BYTES) return response("Inline raw resource exceeds the 25 MiB limit. Use the R2 upload mode for larger files.", 413);
-    const mime = validMime(rawMime);
+    const mime = validMime(rawMime + (encoding ? "; charset=" + encoding : ""));
     if (!mime) return response("Payload contains an invalid MIME type.", 415);
     const range = parseRange(request.headers.get("Range"), bytes.byteLength);
     if (range === "invalid") return response("Requested range is not satisfiable.", 416, mime, { "Content-Range": `bytes */${bytes.byteLength}` });

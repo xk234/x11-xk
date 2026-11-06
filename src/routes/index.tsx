@@ -108,6 +108,7 @@ function Studio() {
   const [mounted, setMounted] = useState(false);
   const [compression, setCompression] = useState<Level>("max");
   const [rewrite, setRewrite] = useState<RewriteOptions>({});
+  const [dynamicRewrite, setDynamicRewrite] = useState(false);
   const [password, setPassword] = useState("");
   const [instant, setInstant] = useState(false);
   const [urlToolOpen, setUrlToolOpen] = useState(false);
@@ -168,11 +169,11 @@ function Studio() {
   useEffect(() => {
     let active = true;
     if (largeFile || !sourceBytes.length) { setPayload(""); return; }
-    encodeV2({ mime, bytes: sourceBytes, meta: { ...(binaryName ? { name: binaryName } : {}), encoding: textEncoding }, level: compression, instant, rewrite: textEncoding === "utf-8" ? rewrite : {}, ...(password ? { password } : {}) })
+    encodeV2({ mime, bytes: sourceBytes, meta: { ...(binaryName ? { name: binaryName } : {}), encoding: textEncoding }, level: compression, instant, rewrite: textEncoding === "utf-8" ? rewrite : {}, dynamicRewrite, ...(password ? { password } : {}) })
       .then((value) => { if (active) setPayload(value); })
       .catch((error) => { console.error(error); if (active) setPayload(""); });
     return () => { active = false; };
-  }, [sourceBytes, largeFile, mime, compression, instant, rewrite, password, binaryName, textEncoding]);
+  }, [sourceBytes, largeFile, mime, compression, instant, rewrite, dynamicRewrite, password, binaryName, textEncoding]);
   const url = payload ? `${base}#${payload}` : "";
   const rawUrl = payload ? `${base}r?data=${encodeURIComponent(payload)}` : "";
   const rawSupported = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(mime.split(";")[0].trim());
@@ -490,6 +491,8 @@ function Studio() {
             <label className="mb-2 block text-xs text-muted-foreground">Compression strength</label>
             <select value={compression} onChange={(e) => setCompression(e.target.value as Level)} className="h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="fast">Fast</option><option value="max">Max</option><option value="ultra">Ultra</option><option value="insane">Insane · codec search</option><option value="dynamic">Dynamic · smallest candidate</option></select>
             <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={instant} onChange={(e) => setInstant(e.target.checked)} /> Instant run</label>
+            <label className="mt-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={dynamicRewrite} onChange={(e) => setDynamicRewrite(e.target.checked)} /> Search rewrite combinations in Dynamic mode</label>
+            <p className="mt-1 text-[10px] text-muted-foreground">Tests selected rewrite passes in different combinations and keeps the shortest final link. Search is capped to protect memory and CPU.</p>
             <div className="mt-4 border-t border-white/10 pt-3">
               <div className="mb-2 text-xs font-semibold">Source shrinking · opt-in</div>
               <p className="mb-2 text-[10px] text-muted-foreground">These use syntax-aware parsers for HTML, CSS, JavaScript and JSON. Comment removal strips all comment types in the selected language; minification can change formatting. Keep them off when exact source bytes matter.</p>

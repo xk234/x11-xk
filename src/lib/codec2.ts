@@ -1,5 +1,10 @@
 import { deflateSync, inflateSync, strToU8, strFromU8 } from "fflate";
 import { decodePayload } from "./codec";
+import { parse as parseHtml, serialize as serializeHtml } from "parse5";
+import { parse as parseJs } from "@babel/parser";
+import generate from "@babel/generator";
+import postcss from "postcss";
+import { decodeText } from "./text-encoding";
 
 /*
  * Link formats after the first "#":
@@ -12,8 +17,11 @@ import { decodePayload } from "./codec";
  * "!" and "~" are not in the LZ alphabet, so old links keep decoding unchanged.
  */
 
-export type Meta = { name?: string; title?: string };
-export type Level = "fast" | "max" | "ultra";
+export type Meta = { name?: string; title?: string; encoding?: string };
+export type Level = "fast" | "max" | "ultra" | "insane" | "dynamic";
+export type RewriteOptions = { htmlComments?: boolean; htmlWhitespace?: boolean; cssComments?: boolean; cssWhitespace?: boolean; svgMetadata?: boolean; jsComments?: boolean; jsMinify?: boolean; jsonMinify?: boolean };
+
+const F_CODEC_GZIP = 8, F_CODEC_DEFLATE = 16;
 export type Decoded =
   | { status: "ok"; mime: string; bytes: Uint8Array; text: string | null; meta: Meta; instant: boolean; version: 1 | 2 }
   | { status: "locked"; instant: boolean }
@@ -45,34 +53,134 @@ async function key(password: string, salt: Uint8Array) {
   );
 }
 
-function compress(body: Uint8Array, level: Level): Uint8Array {
-  if (level === "fast") return deflateSync(body, { level: 6 });
-  if (level === "max") return deflateSync(body, { level: 9, mem: 12 });
-  let best = deflateSync(body, { level: 9, mem: 12 });
-  for (const mem of [8, 9, 10, 11] as const) {
-    const c = deflateSync(body, { level: 9, mem });
-    if (c.length < best.length) best = c;
+async function streamCompress(body: Uint8Array, format: "gzip" | "deflate"): Promise<Uint8Array> {
+  const stream = new Blob([body as BlobPart]).stream().pipeThrough(new CompressionStream(format));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function compress(body: Uint8Array, level: Level): Promise<{ bytes: Uint8Array; codec: number }> {
+  const candidates: { bytes: Uint8Array; codec: number }[] = [];
+  const add = (bytes: Uint8Array, codec = 0) => { if (bytes.length < body.length) candidates.push({ bytes, codec }); };
+  if (level === "fast") add(deflateSync(body, { level: 1, mem: 8 }));
+  else if (level === "max") add(deflateSync(body, { level: 9, mem: 12 }));
+  else {
+    const levels = level === "ultra" ? [9] : [7, 8, 9];
+    const memories = level === "ultra" ? [9, 10, 11, 12] : [8, 9, 10, 11, 12];
+    for (const l of levels) for (const mem of memories) add(deflateSync(body, { level: l as 7 | 8 | 9, mem: mem as 8 | 9 | 10 | 11 | 12 }));
   }
-  return best;
+  // Native gzip/deflate can outperform fflate on Unicode-heavy text (emoji,
+  // CJK, combining marks) and repetitive binary data. Compare real byte sizes.
+  // Keep "fast" lightweight; all higher presets test both browser stream codecs.
+  if (level !== "fast") {
+    for (const format of ["gzip", "deflate"] as const) {
+      try { add(await streamCompress(body, format), format === "gzip" ? 1 : 2); } catch { /* codec unavailable */ }
+    }
+  }
+  candidates.sort((a, b) => a.bytes.length - b.bytes.length);
+  return candidates[0] ?? { bytes: body, codec: 0 };
 }
 
-export async function encodeV2(opts: {
-  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string;
+export function rewriteText(bytes: Uint8Array, mime: string, options: RewriteOptions = {}): Uint8Array {
+  if (!isTextMime(mime) || !Object.values(options).some(Boolean)) return bytes;
+  const source = strFromU8(bytes);
+  try {
+    if (mime.includes("javascript") || /typescript|tsx/.test(mime)) {
+      if (!options.jsComments && !options.jsMinify) return bytes;
+      const ast = parseJs(source, {
+        sourceType: "unambiguous",
+        allowReturnOutsideFunction: true,
+        attachComment: false,
+        plugins: ["jsx", "typescript", "decorators-legacy", "classProperties", "dynamicImport", "importMeta", "topLevelAwait"],
+      });
+      return strToU8(generate(ast, {
+        comments: false,
+        compact: !!options.jsMinify,
+        minified: !!options.jsMinify,
+        jsescOption: { minimal: true },
+      }).code);
+    }
+    if (mime.includes("json") && options.jsonMinify) {
+      return strToU8(JSON.stringify(JSON.parse(source)));
+    }
+    if (mime.includes("css")) {
+      if (!options.cssComments && !options.cssWhitespace) return bytes;
+      const root = postcss.parse(source);
+      if (options.cssComments) root.walkComments((comment) => { comment.remove(); });
+      if (options.cssWhitespace) {
+        root.walk((node) => {
+          node.raws.before = "";
+          if (node.raws.between) node.raws.between = node.type === "decl" ? ":" : "";
+          if (node.raws.after) node.raws.after = "";
+        });
+        root.raws.after = "";
+      }
+      return strToU8(root.toString());
+    }
+    if (mime.includes("html")) {
+      if (!options.htmlComments && !options.htmlWhitespace) return bytes;
+      const document = parseHtml(source) as any;
+      const block = new Set(["address","article","aside","blockquote","body","dd","div","dl","dt","fieldset","figcaption","figure","footer","form","h1","h2","h3","h4","h5","h6","head","header","hr","html","main","nav","ol","p","section","table","tbody","td","tfoot","th","thead","tr","ul"]);
+      const walk = (node: any) => {
+        if (!Array.isArray(node.childNodes)) return;
+        if (options.htmlComments) node.childNodes = node.childNodes.filter((child: any) => {
+          if (child.nodeName !== "#comment") return true;
+          // Preserve legacy conditional comments such as <!--[if IE]>...<![endif]-->.
+          const data = String(child.data ?? "").trimStart();
+          return /^\[if\b|^\[endif\]/i.test(data);
+        });
+        if (options.htmlWhitespace && !["pre","textarea","script","style"].includes(node.tagName)) {
+          node.childNodes = node.childNodes.filter((child: any, index: number, all: any[]) => {
+            if (child.nodeName !== "#text" || !/^\s+$/.test(child.value ?? "")) return true;
+            const prev = all[index - 1], next = all[index + 1];
+            return !(prev?.tagName && next?.tagName && block.has(prev.tagName) && block.has(next.tagName));
+          });
+        }
+        for (const child of node.childNodes) walk(child);
+      };
+      walk(document);
+      return strToU8(serializeHtml(document));
+    }
+    if (mime.includes("svg")) {
+      if (typeof DOMParser === "undefined" || typeof XMLSerializer === "undefined") return bytes;
+      const document = new DOMParser().parseFromString(source, "image/svg+xml");
+      if (document.getElementsByTagName("parsererror").length) return bytes;
+      if (options.svgMetadata) {
+        const walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
+        const comments: Comment[] = [];
+        while (walker.nextNode()) comments.push(walker.currentNode as Comment);
+        for (const comment of comments) comment.parentNode?.removeChild(comment);
+        document.querySelectorAll("metadata").forEach((node) => node.remove());
+      }
+      return strToU8(new XMLSerializer().serializeToString(document));
+    }
+    return bytes;
+  } catch {
+    // A failed parse must never silently corrupt source. Keep original bytes.
+    return bytes;
+  }
+}
+
+async function encodeV2Single(opts: {
+  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string; rewrite?: RewriteOptions; dynamicRewrite?: boolean;
 }): Promise<string> {
   const mimeB = strToU8(opts.mime);
   const metaB = strToU8(JSON.stringify(opts.meta ?? {}));
-  const body = new Uint8Array(4 + mimeB.length + metaB.length + opts.bytes.length);
+  const source = rewriteText(opts.bytes, opts.mime, opts.rewrite);
+  const body = new Uint8Array(4 + mimeB.length + metaB.length + source.length);
   const dv = new DataView(body.buffer);
   dv.setUint16(0, mimeB.length);
   body.set(mimeB, 2);
   dv.setUint16(2 + mimeB.length, metaB.length);
   body.set(metaB, 4 + mimeB.length);
-  body.set(opts.bytes, 4 + mimeB.length + metaB.length);
+  body.set(source, 4 + mimeB.length + metaB.length);
 
   let flags = 0;
   let payload: Uint8Array = body;
-  const packed = compress(body, opts.level ?? "max");
-  if (packed.length < body.length) { payload = packed; flags |= F_DEFLATE; }
+  const packed = await compress(body, opts.level ?? "max");
+  if (packed.bytes.length < body.length) {
+    payload = packed.bytes; flags |= F_DEFLATE;
+    if (packed.codec === 1) flags |= F_CODEC_GZIP;
+    if (packed.codec === 2) flags |= F_CODEC_DEFLATE;
+  }
   if (opts.instant) flags |= F_INSTANT;
   if (opts.password) {
     flags |= F_ENC;
@@ -88,9 +196,77 @@ export async function encodeV2(opts: {
   return "~" + b64urlEncode(out);
 }
 
+export async function encodeV2(opts: {
+  mime: string; bytes: Uint8Array; meta?: Meta; level?: Level; instant?: boolean; password?: string; rewrite?: RewriteOptions; dynamicRewrite?: boolean;
+}): Promise<string> {
+  if (!opts.dynamicRewrite || (opts.level ?? "max") !== "dynamic") return encodeV2Single(opts);
+  const enabled = Object.entries(opts.rewrite ?? {}).filter(([, value]) => value).map(([key]) => key as keyof RewriteOptions);
+  if (enabled.length === 0) return encodeV2Single(opts);
+  const candidates: RewriteOptions[] = [{}];
+  const all = Object.fromEntries(enabled.map((key) => [key, true])) as RewriteOptions;
+  candidates.push(all);
+  for (const key of enabled) {
+    candidates.push({ [key]: true } as RewriteOptions);
+    const without = { ...all };
+    delete without[key];
+    candidates.push(without);
+  }
+  const unique = new Map<string, RewriteOptions>();
+  for (const candidate of candidates) unique.set(enabled.map((key) => candidate[key] ? "1" : "0").join(""), candidate);
+  const ordered = [...unique.values()];
+  const bounded = opts.bytes.length > 2 * 1024 * 1024 ? ordered.slice(0, Math.min(4, ordered.length)) : ordered.slice(0, 20);
+  let best = "";
+  for (const rewrite of bounded) {
+    const candidate = await encodeV2Single({ ...opts, rewrite, dynamicRewrite: false });
+    if (!best || candidate.length < best.length) best = candidate;
+  }
+  return best;
+}
+
+export function isUrlSource(value: string): boolean {
+  const s = value.trim();
+  return /^blob:/i.test(s) || /^https?:\/\//i.test(s) || /^\/\//.test(s) || /^(?:localhost|(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?(?:[/?#]|$)/i.test(s) || /^\[[0-9a-f:]+\](?::\d+)?(?:[/?#]|$)/i.test(s) || /^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i.test(s);
+}
+
+/** Browser-only URL import. Cross-origin sources must allow CORS. */
+async function decodeUrlSource(input: string): Promise<Decoded> {
+  const raw = input.trim();
+  const candidates: string[] = [];
+  try {
+    if (/^blob:/i.test(raw) || /^https?:\/\//i.test(raw)) candidates.push(raw);
+    else if (raw.startsWith("//")) candidates.push(new URL(raw, location.href).toString());
+    else {
+      const host = raw.replace(/^\/+/, "");
+      candidates.push(new URL("https://" + host).toString());
+      if (location.protocol !== "https:") candidates.push(new URL("http://" + host).toString());
+    }
+  } catch { return { status: "error", reason: "Invalid URL. Use blob:, http:// or https://." }; }
+  let lastError = "The browser could not read that URL.";
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate);
+      if (!response.ok) { lastError = "The URL returned HTTP " + response.status + "."; continue; }
+      const maxBytes = 50 * 1024 * 1024;
+      const declared = Number(response.headers.get("content-length") || 0);
+      if (declared > maxBytes) return { status: "error", reason: "File exceeds the 50 MB browser import limit." };
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > maxBytes) return { status: "error", reason: "File exceeds the 50 MB browser import limit." };
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      const mime = (contentType.split(";")[0] || "application/octet-stream").trim();
+      const charset = contentType.match(/;\s*charset=([^;]+)/i)?.[1]?.replace(/["\']/g, "").trim().toLowerCase();
+      const parsed = new URL(candidate);
+      return { status: "ok", mime, bytes, text: isTextMime(mime) ? decodeText(bytes, (charset || "utf-8") as import("./text-encoding").TextEncoding) : null, meta: { name: parsed.pathname.split("/").pop() || parsed.hostname, ...(charset ? { encoding: charset } : {}) }, instant: false, version: 2 };
+    } catch (error) {
+      lastError = error instanceof TypeError ? "Browser fetch was blocked (usually CORS), or this blob URL is no longer available in this tab." : (error instanceof Error ? error.message : lastError);
+    }
+  }
+  return { status: "error", reason: lastError };
+}
+
 export async function decodeAny(payload: string, password?: string): Promise<Decoded> {
   payload = payload.trim();
   if (!payload) return { status: "error", reason: "Empty link" };
+  if (isUrlSource(payload)) return decodeUrlSource(payload);
   if (payload[0] !== "~") {
     const instant = payload[0] === "!";
     const d = decodePayload(instant ? payload.slice(1) : payload);
@@ -99,6 +275,7 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
   }
   let raw: Uint8Array;
   try { raw = b64urlDecode(payload.slice(1)); } catch { return { status: "error", reason: "The link is corrupted" }; }
+  if (raw.length < 2) return { status: "error", reason: "The link is incomplete or corrupted" };
   if (raw[0] !== 2) return { status: "error", reason: "Made by a newer x11 version" };
   const flags = raw[1] ?? 0;
   const instant = !!(flags & F_INSTANT);
@@ -112,14 +289,20 @@ export async function decodeAny(payload: string, password?: string): Promise<Dec
     } catch { return { status: "error", reason: "Wrong password" }; }
   }
   try {
-    if (flags & F_DEFLATE) body = inflateSync(body);
+    if (flags & F_DEFLATE) {
+      const codec = flags & 24;
+      if (codec === F_CODEC_GZIP || codec === F_CODEC_DEFLATE) {
+        const format = codec === F_CODEC_GZIP ? "gzip" : "deflate";
+        body = new Uint8Array(await new Response(new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream(format))).arrayBuffer());
+      } else body = inflateSync(body);
+    }
     const dv = new DataView(body.buffer, body.byteOffset, body.byteLength);
     const ml = dv.getUint16(0);
     const mime = strFromU8(body.subarray(2, 2 + ml));
     const tl = dv.getUint16(2 + ml);
     const meta = JSON.parse(strFromU8(body.subarray(4 + ml, 4 + ml + tl)) || "{}") as Meta;
     const bytes = body.slice(4 + ml + tl);
-    return { status: "ok", mime, bytes, text: isTextMime(mime) ? strFromU8(bytes) : null, meta, instant, version: 2 };
+    return { status: "ok", mime, bytes, text: isTextMime(mime) ? decodeText(bytes, (meta.encoding || "utf-8") as import("./text-encoding").TextEncoding) : null, meta, instant, version: 2 };
   } catch {
     return { status: "error", reason: "The link is corrupted" };
   }
@@ -130,21 +313,54 @@ export function isLocked(payload: string): boolean {
   try { return !!((b64urlDecode(payload.slice(1, 8))[1] ?? 0) & F_ENC); } catch { return false; }
 }
 
-/** Re-encode an image in the browser. Returns null if not resizable (e.g. GIF/SVG). */
+/** Re-encode raster images locally. Auto mode compares AVIF and WebP and
+ * keeps the smallest result only when it beats the original file.
+ * Animated formats are deliberately excluded because canvas would drop frames.
+ */
 export async function processImage(
-  file: Blob, o: { maxSide: number; quality: number; format: "image/webp" | "image/jpeg" | "image/png" | "original" },
+  file: Blob,
+  o: { maxSide: number; quality: number; format: "auto" | "image/webp" | "image/avif" | "image/jpeg" | "image/png" | "original" },
 ): Promise<{ blob: Blob; w: number; h: number } | null> {
-  if (!/^image\/(png|jpeg|webp|bmp|avif)/.test(file.type)) return null;
+  if (!/^image\/(png|jpeg|webp|bmp|avif)$/.test(file.type)) return null;
   const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, o.maxSide / Math.max(bmp.width, bmp.height));
-  const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  if (!ctx) return null;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bmp, 0, 0, w, h);
-  const type = o.format === "original" ? file.type : o.format;
-  const blob = await new Promise<Blob | null>((r) => c.toBlob(r, type, o.quality));
-  return blob ? { blob, w, h } : null;
+  try {
+    const scale = Math.min(1, o.maxSide / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) return null;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, w, h);
+
+    const encode = (type: string, quality: number) => new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, type, quality);
+    });
+    const quality = Math.min(0.95, Math.max(0.2, o.quality));
+    const formats = o.format === "auto"
+      ? ["image/avif", "image/webp"]
+      : o.format === "original"
+        ? [file.type]
+        : [o.format];
+    const candidates: Blob[] = [];
+    for (const format of formats) {
+      try {
+        const encoded = await encode(format, quality);
+        // Unsupported encoders may silently fall back to PNG; only accept
+        // the requested codec when the browser actually produced that MIME.
+        if (encoded && encoded.type === format) candidates.push(encoded);
+      } catch { /* try the next browser encoder */ }
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => a.size - b.size);
+    const best = candidates[0];
+    // Never inflate an image just because the user enabled optimization.
+    if (!best || best.size >= file.size) return null;
+    return { blob: best, w, h };
+  } finally {
+    bmp.close();
+  }
 }

@@ -1,0 +1,21 @@
+name: Static build check
+
+on:
+  push:
+    branches: [x11-recovery]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bunx tsc --noEmit
+      - name: Verify Cloudflare Pages output
+        run: test -f dist/client/index.html && test ! -f dist/client/_redirects

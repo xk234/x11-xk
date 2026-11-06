@@ -70,9 +70,10 @@ export async function onRequest(context: { request: Request; params: Record<stri
     const { mime, bytes } = await unpack(payload);
     if (bytes.byteLength > MAX_BYTES) return response("Raw resource exceeds the 25 MB limit", 413);
     const safeMime = mime.toLowerCase().split(";")[0].trim();
-    const allowed = /^(image\/(png|jpeg|webp|gif|avif|bmp)|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|font\/[a-z0-9.+-]+|application\/(pdf|font-woff|font-woff2|octet-stream)|application\/vnd\.ms-fontobject)$/;
+    const allowed = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|font\/[a-z0-9.+-]+|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream)|application\/vnd\.ms-fontobject)$/;
     if (!allowed.test(safeMime)) return response("Raw mode only serves passive media, fonts and documents. HTML, SVG, CSS and scripts are not served here.", 415);
-    const headers = { "Content-Length": String(bytes.byteLength), "Accept-Ranges": "bytes", "Content-Disposition": "inline" };
+    const headers: Record<string, string> = { "Content-Length": String(bytes.byteLength), "Content-Disposition": "inline" };
+    if (safeMime === "image/svg+xml") headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:";
     return response(request.method === "HEAD" ? null : bytes as BodyInit, 200, safeMime, headers);
   } catch (error) {
     return response(error instanceof Error ? error.message : "Unable to decode raw payload", 400);

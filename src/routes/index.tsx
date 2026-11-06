@@ -135,6 +135,7 @@ function Studio() {
       const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
       if (d?.code) {
         setCode(d.code);
+        setTextEncoding((d.encoding || "utf-8") as TextEncoding);
         const m = d.mime || "text/html";
         setMime(m);
         setLang(guessLang(m));
@@ -267,7 +268,8 @@ function Studio() {
 
   const loadFile = async (f: File) => {
     let bytes = new Uint8Array(await f.arrayBuffer());
-    const l = langFromFilename(f.name);\n    const fileEncoding = detectTextEncoding(bytes);
+    const l = langFromFilename(f.name);
+    const fileEncoding = detectTextEncoding(bytes);
     let detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
     if (imageOptimize && detectedMime.startsWith("image/")) {
       try {
@@ -450,6 +452,16 @@ function Studio() {
             {(customMimeOpen || !MIMES.includes(mime)) && (
               <input aria-label="Custom MIME type" value={customMimeOpen ? customMime : mime} onChange={(e) => { setCustomMime(e.target.value); setMime(e.target.value); }} placeholder="e.g. application/wasm" className="mt-2 h-9 w-full rounded-md border bg-secondary px-2 font-mono-ui text-xs outline-none focus:ring-2 focus:ring-ring" />
             )}
+            <label className="mt-3 block text-xs text-muted-foreground">Text character encoding</label>
+            <select value={textEncoding} onChange={(e) => setTextEncoding(e.target.value as TextEncoding)} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs">
+              <option value="utf-8">UTF-8</option>
+              <option value="utf-16le">UTF-16 Little Endian</option>
+              <option value="utf-16be">UTF-16 Big Endian</option>
+              <option value="windows-1252">Windows-1252</option>
+              <option value="iso-8859-1">ISO-8859-1</option>
+              <option value="us-ascii">US-ASCII</option>
+            </select>
+            <p className="mt-1 text-[10px] text-muted-foreground">UTF-7 is intentionally excluded: it is obsolete and has caused charset-based security problems. Unsupported characters in legacy single-byte encodings are replaced with ?.</p>
           </Section>
 
           <Section title="Appearance">

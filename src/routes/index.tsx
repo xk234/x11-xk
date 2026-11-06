@@ -65,6 +65,17 @@ function Index() {
   return <Studio />;
 }
 
+function previewDocument(code: string, mime: string) {
+  if (mime.includes("css")) {
+    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${code}</style></head><body><main id="x11-css-preview"><h1>CSS preview</h1><p>Your stylesheet is running in this isolated preview.</p><button>Example button</button></main></body></html>`;
+  }
+  if (mime.includes("javascript") || mime.includes("ecmascript")) {
+    const safeCode = code.replace(/<\/script/gi, "<\\/script");
+    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:14px system-ui;padding:20px;color:#ddd;background:#111}</style></head><body><div id="app"></div><script>addEventListener("error",e=>{const n=document.createElement("pre");n.style.cssText="white-space:pre-wrap;color:#ff8b8b";n.textContent=e.message+" ("+e.lineno+")";document.body.append(n)});try{\n${safeCode}\n}catch(e){const n=document.createElement("pre");n.style.cssText="white-space:pre-wrap;color:#ff8b8b";n.textContent=e.stack||String(e);document.body.append(n)}</script></body></html>`;
+  }
+  return code;
+}
+
 function guessLang(mime: string) {
   if (mime.includes("html")) return "html";
   if (mime.includes("svg") || mime.includes("xml")) return "xml";
@@ -80,6 +91,8 @@ function Studio() {
   const [code, setCode] = useState("");
   const [lang, setLang] = useState("html");
   const [mime, setMime] = useState("text/html");
+  const [customMimeOpen, setCustomMimeOpen] = useState(false);
+  const [customMime, setCustomMime] = useState("");
   const [wrap, setWrap] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [previewCode, setPreviewCode] = useState("");
@@ -137,7 +150,7 @@ function Studio() {
     return () => clearTimeout(t);
   }, [code, mime, mounted]);
 
-  const base = mounted ? `${location.origin}/doc.write` : "";
+  const base = mounted ? location.origin : "";
   const [payload, setPayload] = useState("");
   const sourceBytes = useMemo(() => binaryData ?? new TextEncoder().encode(previewCode), [binaryData, previewCode]);
   useEffect(() => {
@@ -239,7 +252,7 @@ function Studio() {
     return () => window.removeEventListener("keydown", h);
   }, [copy, open]);
 
-  const previewable = !binaryData && (mime.includes("html") || mime.includes("svg"));
+  const previewable = !binaryData && (mime.includes("html") || mime.includes("svg") || mime.includes("css") || mime.includes("javascript") || mime.includes("ecmascript"));
 
   return (
     <div
@@ -331,7 +344,7 @@ function Studio() {
                   <iframe
                     title="Live preview"
                     sandbox="allow-scripts allow-modals allow-forms"
-                    srcDoc={previewCode}
+                    srcDoc={previewDocument(previewCode, mime)}
                     className="min-h-0 w-full flex-1 bg-background"
                   />
                 ) : (
@@ -350,14 +363,23 @@ function Studio() {
             <select
               aria-label="File type"
               value={MIMES.includes(mime) ? mime : "custom"}
-              onChange={(e) => e.target.value !== "custom" && setMime(e.target.value)}
+              onChange={(e) => {
+                if (e.target.value === "custom") {
+                  setCustomMimeOpen(true);
+                  setCustomMime(!MIMES.includes(mime) ? mime : "");
+                } else {
+                  setCustomMimeOpen(false);
+                  setCustomMime("");
+                  setMime(e.target.value);
+                }
+              }}
               className="h-9 w-full rounded-md border bg-secondary px-2 font-mono-ui text-xs outline-none focus:ring-2 focus:ring-ring"
             >
               {MIMES.map((m) => <option key={m}>{m}</option>)}
               <option value="custom">Custom…</option>
             </select>
-            {!MIMES.includes(mime) && (
-              <input value={mime} onChange={(e) => setMime(e.target.value)} className="mt-2 h-9 w-full rounded-md border bg-secondary px-2 font-mono-ui text-xs outline-none focus:ring-2 focus:ring-ring" />
+            {(customMimeOpen || !MIMES.includes(mime)) && (
+              <input aria-label="Custom MIME type" value={customMimeOpen ? customMime : mime} onChange={(e) => { setCustomMime(e.target.value); setMime(e.target.value); }} placeholder="e.g. application/wasm" className="mt-2 h-9 w-full rounded-md border bg-secondary px-2 font-mono-ui text-xs outline-none focus:ring-2 focus:ring-ring" />
             )}
           </Section>
 

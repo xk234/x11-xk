@@ -112,6 +112,7 @@ function Studio() {
   const [theme, setTheme] = useState("crimson");
   const [binaryData, setBinaryData] = useState<Uint8Array | null>(null);
   const [binaryName, setBinaryName] = useState("");
+  const [imageOptimize, setImageOptimize] = useState(true);
   const [imageMaxSide, setImageMaxSide] = useState(4096);
   const [imageQuality, setImageQuality] = useState(0.86);
   const [imageFormat, setImageFormat] = useState<"original" | "image/webp" | "image/jpeg" | "image/png">("original");
@@ -212,7 +213,7 @@ function Studio() {
     let bytes = new Uint8Array(await f.arrayBuffer());
     const l = langFromFilename(f.name);
     let detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
-    if (detectedMime.startsWith("image/")) {
+    if (imageOptimize && detectedMime.startsWith("image/")) {
       try {
         const processed = await processImage(new Blob([bytes as BlobPart], { type: detectedMime }), { maxSide: imageMaxSide, quality: imageQuality, format: imageFormat });
         if (processed) { bytes = new Uint8Array(await processed.blob.arrayBuffer()); detectedMime = processed.blob.type || detectedMime; }
@@ -419,7 +420,8 @@ function Studio() {
                 </label>
               ))}
             </div>
-            <label className="mt-3 block text-xs text-muted-foreground">Image maximum dimension</label>
+            <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={imageOptimize} onChange={(e) => setImageOptimize(e.target.checked)} /> Re-encode raster images on import</label>
+            <label className="mt-3 block text-xs text-muted-foreground">Image maximum dimension (next import)</label>
             <select value={imageMaxSide} onChange={(e) => setImageMaxSide(Number(e.target.value))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value={1024}>1024 px</option><option value={2048}>2048 px</option><option value={4096}>4096 px</option><option value={8192}>8192 px</option></select>
             <label className="mt-3 block text-xs text-muted-foreground">Image quality: {Math.round(imageQuality * 100)}%</label>
             <input type="range" min="0.2" max="1" step="0.05" value={imageQuality} onChange={(e) => setImageQuality(Number(e.target.value))} className="w-full" />

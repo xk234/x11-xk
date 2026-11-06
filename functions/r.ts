@@ -71,7 +71,7 @@ function headersFor(mime: string, cache = "public, max-age=3600") {
   headers.set("Content-Type", mime);
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Range, Content-Type, X-X11-Upload-Key, X-X11-Name");
+  headers.set("Access-Control-Allow-Headers", "Range, Content-Type, X-X11-Upload-Key, X-X11-Name, X-X11-SHA256");
   headers.set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, ETag");
   headers.set("Accept-Ranges", "bytes");
   headers.set("Cross-Origin-Resource-Policy", "cross-origin");

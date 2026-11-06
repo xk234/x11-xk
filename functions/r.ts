@@ -4,8 +4,21 @@ const F_ENC = 1;
 const F_DEFLATE = 4;
 const F_CODEC_GZIP = 8;
 const F_CODEC_DEFLATE = 16;
-const MAX_BYTES = 25 * 1024 * 1024;
+const MAX_INLINE_BYTES = 25 * 1024 * 1024;
 const MAX_PAYLOAD_CHARS = 1_500_000;
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+interface StoredObject {
+  size: number;
+  body: ReadableStream<Uint8Array> | null;
+  httpMetadata?: { contentType?: string; contentDisposition?: string };
+  writeHttpMetadata(headers: Headers): void;
+}
+interface R2BucketLike {
+  put(key: string, value: ReadableStream<Uint8Array> | ArrayBuffer, options?: { httpMetadata?: { contentType?: string; contentDisposition?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
+  get(key: string, options?: { range?: { offset: number; length: number } }): Promise<StoredObject | null>;
+}
+interface Env { X11_R2?: R2BucketLike; X11_UPLOAD_KEY?: string }
 
 function decode64(input: string): Uint8Array {
   const binary = atob(input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4));
@@ -15,7 +28,7 @@ function decode64(input: string): Uint8Array {
 }
 
 async function unpack(payload: string): Promise<{ mime: string; bytes: Uint8Array }> {
-  if (!payload.startsWith("~")) throw new Error("Raw mode currently requires an unencrypted v2 payload");
+  if (!payload.startsWith("~")) throw new Error("Raw mode requires an unencrypted v2 payload");
   const raw = decode64(payload.slice(1));
   if (raw.length < 2 || raw[0] !== 2) throw new Error("Unsupported x11 payload version");
   const flags = raw[1];
@@ -39,57 +52,137 @@ async function unpack(payload: string): Promise<{ mime: string; bytes: Uint8Arra
   return { mime, bytes: body.slice(start) };
 }
 
-function reply(body: BodyInit | null, status: number, mime = "text/plain; charset=utf-8", extra: HeadersInit = {}) {
-  const headers = new Headers(extra);
+function validMime(input: string): string | null {
+  const mime = input.toLowerCase().split(";")[0].trim();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mime) ? mime : null;
+}
+
+function headersFor(mime: string, cache = "public, max-age=3600") {
+  const headers = new Headers();
   headers.set("Content-Type", mime);
   headers.set("Access-Control-Allow-Origin", "*");
-  headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Range, Content-Type");
-  headers.set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+  headers.set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Range, Content-Type, X-X11-Upload-Key, X-X11-Name");
+  headers.set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, ETag");
   headers.set("Accept-Ranges", "bytes");
   headers.set("Cross-Origin-Resource-Policy", "cross-origin");
   headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("Cache-Control", "public, max-age=3600");
+  headers.set("Cache-Control", cache);
+  headers.set("Content-Disposition", "inline");
+  // Active documents must not execute with the x11 Studio's origin.
+  if (mime === "text/html" || mime === "application/xhtml+xml" || mime === "image/svg+xml") {
+    headers.set("Content-Security-Policy", "sandbox; default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; media-src blob: https:; form-action 'none'; base-uri 'none'");
+  }
+  return headers;
+}
+
+function response(body: BodyInit | null, status: number, mime = "text/plain; charset=utf-8", extra: HeadersInit = {}) {
+  const headers = headersFor(mime);
+  new Headers(extra).forEach((value, key) => headers.set(key, value));
   return new Response(body, { status, headers });
 }
 
-export async function onRequest({ request }: { request: Request }) {
-  if (request.method === "OPTIONS") return reply(null, 204);
-  if (request.method !== "GET" && request.method !== "HEAD") return reply("Method not allowed", 405, undefined, { Allow: "GET, HEAD, OPTIONS" });
+function parseRange(value: string | null, size: number): { start: number; end: number } | null | "invalid" {
+  if (!value) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) return "invalid";
+  let start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
+  let end = match[2] ? Number(match[2]) : size - 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) return "invalid";
+  end = Math.min(end, size - 1);
+  return { start, end };
+}
+
+async function authorized(request: Request, env: Env) {
+  if (!env.X11_UPLOAD_KEY) return false;
+  const supplied = request.headers.get("X-X11-Upload-Key") ?? "";
+  const a = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(supplied));
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.X11_UPLOAD_KEY));
+  const aa = new Uint8Array(a), bb = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < aa.length; i++) diff |= aa[i] ^ bb[i];
+  return diff === 0;
+}
+
+async function handleUpload(request: Request, env: Env): Promise<Response> {
+  if (!env.X11_R2) return response("R2 storage is not configured. Bind an R2 bucket as X11_R2.", 503);
+  if (!env.X11_UPLOAD_KEY) return response("Uploads are disabled until X11_UPLOAD_KEY is configured.", 503);
+  if (!(await authorized(request, env))) return response("Upload key required or incorrect.", 401);
+  const mime = validMime(request.headers.get("Content-Type") || "application/octet-stream");
+  if (!mime) return response("Invalid Content-Type MIME value.", 415);
+  const length = Number(request.headers.get("Content-Length") || 0);
+  if (length > MAX_UPLOAD_BYTES) return response("Upload exceeds the current 100 MiB edge limit.", 413);
+  if (!request.body) return response("Empty upload.", 400);
+  const id = crypto.randomUUID().replace(/-/g, "");
+  const name = (request.headers.get("X-X11-Name") || "shared-resource").replace(/[\r\n"]/g, "_").slice(0, 180);
+  try {
+    await env.X11_R2.put(id, request.body, {
+      httpMetadata: { contentType: mime, contentDisposition: "inline" },
+      customMetadata: { name, created: new Date().toISOString() },
+    });
+    return response(JSON.stringify({ ok: true, id, url: new URL("/r?id=" + id, request.url).toString(), name }), 201, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+  } catch (error) {
+    return response(error instanceof Error ? error.message : "R2 upload failed.", 502);
+  }
+}
+
+async function handleStored(request: Request, env: Env, id: string): Promise<Response> {
+  if (!env.X11_R2) return response("R2 storage is not configured.", 503);
+  if (!/^[a-f0-9]{32}$/.test(id)) return response("Invalid resource ID.", 400);
+  const object = await env.X11_R2.get(id);
+  if (!object) return response("Resource not found.", 404);
+  const mime = validMime(object.httpMetadata?.contentType || "application/octet-stream") || "application/octet-stream";
+  const range = parseRange(request.headers.get("Range"), object.size);
+  if (range === "invalid") return response("Requested range is not satisfiable.", 416, mime, { "Content-Range": `bytes */${object.size}` });
+  if (range) {
+    const part = await env.X11_R2.get(id, { range: { offset: range.start, length: range.end - range.start + 1 } });
+    if (!part?.body) return response("Stored range unavailable.", 502, mime);
+    const headers = headersFor(mime);
+    headers.set("Content-Length", String(range.end - range.start + 1));
+    headers.set("Content-Range", `bytes ${range.start}-${range.end}/${object.size}`);
+    return new Response(request.method === "HEAD" ? null : part.body, { status: 206, headers });
+  }
+  const headers = headersFor(mime);
+  headers.set("Content-Length", String(object.size));
+  object.writeHttpMetadata(headers);
+  // Re-apply security and CORS headers after R2 metadata.
+  const safe = headersFor(mime);
+  headers.forEach((v, k) => { if (!["content-security-policy", "access-control-allow-origin", "x-content-type-options", "cross-origin-resource-policy"].includes(k.toLowerCase())) safe.set(k, v); });
+  for (const key of ["Content-Security-Policy", "Access-Control-Allow-Origin", "X-Content-Type-Options", "Cross-Origin-Resource-Policy"]) {
+    const value = headersFor(mime).get(key);
+    if (value) safe.set(key, value);
+  }
+  return new Response(request.method === "HEAD" ? null : object.body, { status: 200, headers: safe });
+}
+
+export async function onRequest({ request, env }: { request: Request; env: Env }) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: headersFor("text/plain; charset=utf-8") });
+  if (request.method === "POST") return handleUpload(request, env);
+  if (request.method !== "GET" && request.method !== "HEAD") return response("Method not allowed.", 405, undefined, { Allow: "GET, HEAD, POST, OPTIONS" });
   const url = new URL(request.url);
   if (url.searchParams.get("health") === "1") {
-    return reply(JSON.stringify({ ok: true, endpoint: "/r", format: "x11-v2", range: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+    return response(JSON.stringify({ ok: true, endpoint: "/r", inlineMime: "any-valid-mime", upload: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, maxUploadBytes: MAX_UPLOAD_BYTES, range: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
   }
+  const id = url.searchParams.get("id");
+  if (id) return handleStored(request, env, id);
   const payload = url.searchParams.get("data") ?? "";
-  if (!payload || payload.length > MAX_PAYLOAD_CHARS) return reply("Missing or oversized ?data= payload", 400);
+  if (!payload || payload.length > MAX_PAYLOAD_CHARS) return response("Missing or oversized ?data= payload.", 400);
   try {
-    const { mime, bytes } = await unpack(payload);
-    if (bytes.byteLength > MAX_BYTES) return reply("Raw resource exceeds the 25 MiB limit", 413);
-    const safeMime = mime.toLowerCase().split(";")[0].trim();
-    const allowed = /^(image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml|x-icon)|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|font\/[a-z0-9.+-]+|application\/(pdf|font-woff|font-woff2|font-sfnt|x-font-ttf|octet-stream)|application\/vnd\.ms-fontobject)$/;
-    if (!allowed.test(safeMime)) return reply("Raw mode only serves passive images, audio, video, fonts and documents.", 415);
-    const headers: Record<string, string> = {
-      "Content-Disposition": "inline",
-    };
-    if (safeMime === "image/svg+xml") headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:";
-    const range = request.headers.get("Range");
+    const { mime: rawMime, bytes } = await unpack(payload);
+    if (bytes.byteLength > MAX_INLINE_BYTES) return response("Inline raw resource exceeds the 25 MiB limit. Use the R2 upload mode for larger files.", 413);
+    const mime = validMime(rawMime);
+    if (!mime) return response("Payload contains an invalid MIME type.", 415);
+    const range = parseRange(request.headers.get("Range"), bytes.byteLength);
+    if (range === "invalid") return response("Requested range is not satisfiable.", 416, mime, { "Content-Range": `bytes */${bytes.byteLength}` });
     if (range) {
-      const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-      if (!match || (!match[1] && !match[2])) return reply("Invalid byte range", 416, undefined, { "Content-Range": `bytes */${bytes.byteLength}` });
-      let start = match[1] ? Number(match[1]) : Math.max(0, bytes.byteLength - Number(match[2]));
-      let end = match[2] ? Number(match[2]) : bytes.byteLength - 1;
-      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= bytes.byteLength) {
-        return reply("Requested range is not satisfiable", 416, undefined, { "Content-Range": `bytes */${bytes.byteLength}` });
-      }
-      end = Math.min(end, bytes.byteLength - 1);
-      const slice = bytes.subarray(start, end + 1);
-      headers["Content-Length"] = String(slice.byteLength);
-      headers["Content-Range"] = `bytes ${start}-${end}/${bytes.byteLength}`;
-      return reply(request.method === "HEAD" ? null : slice as BodyInit, 206, safeMime, headers);
+      const slice = bytes.subarray(range.start, range.end + 1);
+      return response(request.method === "HEAD" ? null : slice as BodyInit, 206, mime, {
+        "Content-Length": String(slice.byteLength),
+        "Content-Range": `bytes ${range.start}-${range.end}/${bytes.byteLength}`,
+      });
     }
-    headers["Content-Length"] = String(bytes.byteLength);
-    return reply(request.method === "HEAD" ? null : bytes as BodyInit, 200, safeMime, headers);
+    return response(request.method === "HEAD" ? null : bytes as BodyInit, 200, mime, { "Content-Length": String(bytes.byteLength) });
   } catch (error) {
-    return reply(error instanceof Error ? error.message : "Unable to decode raw resource", 400);
+    return response(error instanceof Error ? error.message : "Unable to decode raw resource.", 400);
   }
 }

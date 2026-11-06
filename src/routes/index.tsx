@@ -281,7 +281,7 @@ function Studio() {
 
   const loadFile = async (f: File) => {
     const l = langFromFilename(f.name);
-    const detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
+    let detectedMime = (l !== "plaintext" ? LANGS.find((x) => x.value === l)?.mime : undefined) ?? (f.type || "text/plain");
     const textLike = /^text\//i.test(detectedMime) || /json|javascript|xml|svg|yaml|typescript/i.test(detectedMime);
     if (f.size > 20 * 1024 * 1024) {
       setLargeFile(f); setBinaryData(null); setCode(""); setPreviewCode(""); setMime(detectedMime);
@@ -551,7 +551,7 @@ function Studio() {
             <div className="mt-3 space-y-2 rounded-lg border bg-background/40 p-3">
               <div className="text-xs font-medium">Large raw link · R2 storage</div>
               <input type="password" value={uploadKey} onChange={(e) => setUploadKey(e.target.value)} placeholder="Cloudflare X11_UPLOAD_KEY" className="h-9 w-full rounded-md border bg-background px-3 text-xs" />
-              <Button variant="outline" size="sm" className="w-full" onClick={uploadRaw} disabled={!hasSource || !uploadKey.trim()}><Upload /> Upload / resume large raw link</Button>
+              <Button variant="outline" size="sm" className="w-full" onClick={uploadRaw} disabled={!hasSource || !uploadKey.trim() || !rawSupported}><Upload /> Upload / resume large raw link</Button>
               {uploadProgress > 0 && uploadProgress < 100 && <p className="text-[10px] text-muted-foreground">Transfer progress: {uploadProgress}%</p>}
               {uploadProgress === 100 && <p className="text-[10px] text-success">All chunks sent; finalizing resource…</p>}
               {uploadedRawUrl && <p className="break-all text-[10px] text-muted-foreground">Stored link: {uploadedRawUrl}</p>}

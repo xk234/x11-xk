@@ -1,6 +1,6 @@
 # Cloudflare Pages deployment
 
-This branch is configured as a client-only TanStack Start SPA. It does not need a Worker, Pages Function, Supabase project, database, server secrets, or server runtime. The SPA shell is emitted as `dist/client/index.html`; do not add a catch-all `_redirects` rule for `/_shell.html`. Cloudflare Pages canonicalizes `.html` URLs, while its default SPA fallback serves the root `index.html` for unknown paths.
+The Studio is a client-only TanStack Start SPA, with one optional Cloudflare Pages Function for raw resource delivery. It does not need Supabase, a database, server secrets, or a separate always-on server. The SPA shell is emitted as `dist/client/index.html`; do not add a catch-all `_redirects` rule for `/_shell.html`. Cloudflare Pages canonicalizes `.html` URLs, while its default SPA fallback serves the root `index.html` for unknown paths.
 
 ## Build settings
 
@@ -28,3 +28,18 @@ The app reads the fragment on the root route and decodes it entirely in the brow
 
 All payload encoding, compression, password encryption, decoding, previews, and local history run in the browser. Site-wide visit counts and IP/network analytics are not available in a static-only deployment; no IP or network identifiers are collected.
 
+
+## Raw resource URLs
+
+The Studio can also copy a URL in this form:
+
+`https://x11-xk.pages.dev/r/PAYLOAD`
+
+Cloudflare Pages detects the repository-level `functions/r/[[path]].ts` route and runs it at the edge. It decodes unencrypted x11 v1/v2 payloads and serves only allowlisted passive media, fonts and PDF/octet-stream resources with permissive CORS headers. This is intended for remote services that fetch an image URL, such as slide editors.
+
+Important differences:
+- A fragment URL such as `/#PAYLOAD` cannot be fetched by another service: URL fragments are never included in HTTP requests.
+- Raw mode rejects HTML, SVG, CSS, JavaScript and password-protected links.
+- Raw responses are capped at 25 MiB and payload paths at 1.5 million characters.
+- The Pages Function means deployment is no longer strictly static-only, although the editor and decoder remain static client code.
+- Keep the Pages project root at the repository root so Cloudflare can discover the `functions/` directory while publishing `dist/client`.

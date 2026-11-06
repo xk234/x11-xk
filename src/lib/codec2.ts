@@ -243,7 +243,7 @@ async function decodeUrlSource(input: string): Promise<Decoded> {
       if (bytes.byteLength > maxBytes) return { status: "error", reason: "File exceeds the 50 MB browser import limit." };
       const contentType = response.headers.get("content-type") || "application/octet-stream";
       const mime = contentType.split(";")[0].trim();
-      const charset = contentType.match(/;\\s*charset=([^;]+)/i)?.[1]?.replace(/["\']/g, "").trim().toLowerCase();
+      const charset = contentType.match(/;\s*charset=([^;]+)/i)?.[1]?.replace(/["\']/g, "").trim().toLowerCase();
       const parsed = new URL(candidate);
       return { status: "ok", mime, bytes, text: isTextMime(mime) ? decodeText(bytes, (charset || "utf-8") as import("./text-encoding").TextEncoding) : null, meta: { name: parsed.pathname.split("/").pop() || parsed.hostname, ...(charset ? { encoding: charset } : {}) }, instant: false, version: 2 };
     } catch (error) {

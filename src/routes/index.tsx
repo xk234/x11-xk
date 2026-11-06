@@ -10,7 +10,10 @@ import type { OnMount } from "@monaco-editor/react";
 
 import { Button } from "@/components/ui/button";
 import { DecodeScreen } from "@/components/x11/DecodeScreen";
-import { decodePayload, encodePayload, formatBytes, payloadFromUrl } from "@/lib/codec";
+import { InfoDialog } from "@/components/x11/InfoDialog";
+import { UrlToolDialog } from "@/components/x11/UrlToolDialog";
+import { decodePayload, formatBytes, payloadFromUrl } from "@/lib/codec";
+import { encodeV2, type Level } from "@/lib/codec2";
 import { EXAMPLES, LANGS, MIMES, langFromFilename } from "@/lib/examples";
 
 const CodeEditor = lazy(() => import("@/components/x11/CodeEditor"));
@@ -86,6 +89,11 @@ function Studio() {
   const [importText, setImportText] = useState("");
   const [dragging, setDragging] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [compression, setCompression] = useState<Level>("max");
+  const [password, setPassword] = useState("");
+  const [instant, setInstant] = useState(false);
+  const [urlToolOpen, setUrlToolOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -117,7 +125,15 @@ function Studio() {
   }, [code, mime, mounted]);
 
   const base = mounted ? location.origin + location.pathname : "";
-  const payload = useMemo(() => (previewCode.trim() ? encodePayload(mime, previewCode) : ""), [previewCode, mime]);
+  const [payload, setPayload] = useState("");
+  useEffect(() => {
+    let active = true;
+    if (!previewCode.trim()) { setPayload(""); return; }
+    encodeV2({ mime, bytes: new TextEncoder().encode(previewCode), level: compression, instant, ...(password ? { password } : {}) })
+      .then((value) => { if (active) setPayload(value); })
+      .catch((error) => { console.error(error); if (active) setPayload(""); });
+    return () => { active = false; };
+  }, [previewCode, mime, compression, instant, password]);
   const url = payload ? `${base}#${payload}` : "";
   const origBytes = useMemo(() => new TextEncoder().encode(previewCode).length, [previewCode]);
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;
@@ -226,7 +242,9 @@ function Studio() {
             ))}
           </div>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload /> Open file</Button>
+          <Button variant="outline" size="sm" onClick={() => setUrlToolOpen(true)}>URL tools</Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}><Link2 /> Decode link</Button>
+          <Button variant="ghost" size="icon" title="Update history and TODO" onClick={() => setInfoOpen(true)}>Info</Button>
           <Button variant="ghost" size="icon" title="Clear" onClick={() => setCode("")}><Trash2 /></Button>
           <input ref={fileRef} type="file" hidden onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])} />
         </div>
@@ -313,6 +331,15 @@ function Studio() {
             )}
           </Section>
 
+          <Section title="Compression 2.0">
+            <label className="mb-2 block text-xs text-muted-foreground">Compression strength</label>
+            <select value={compression} onChange={(e) => setCompression(e.target.value as Level)} className="h-9 w-full rounded-md border bg-secondary px-2 text-xs"><option value="fast">Fast</option><option value="max">Max</option><option value="ultra">Ultra</option></select>
+            <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={instant} onChange={(e) => setInstant(e.target.checked)} /> Instant run</label>
+            <label className="mt-3 block text-xs text-muted-foreground">Optional password encryption</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set a link password" className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-xs" />
+            <p className="mt-2 text-[10px] text-muted-foreground">AES-GCM encryption runs locally. Share the password separately.</p>
+          </Section>
+
           <Section title="Your link">
             <div className={`break-all rounded-lg border bg-background/60 p-3 font-mono-ui text-[11px] leading-relaxed ${url ? "" : "text-muted-foreground"}`}>
               {url ? (<><span className="text-primary">{base}#</span>{payload.slice(0, 140)}{payload.length > 140 && "…"}</>) : "Updates automatically as you type."}
@@ -385,6 +412,9 @@ function Studio() {
           </div>
         </aside>
       </div>
+
+      {urlToolOpen && <UrlToolDialog onClose={() => setUrlToolOpen(false)} onEmbed={(html) => { setCode(html); setMime("text/html"); setLang("html"); }} onFetched={({ mime: fetchedMime, bytes }) => { const text = new TextDecoder().decode(bytes); setCode(text); setMime(fetchedMime); setLang(guessLang(fetchedMime)); }} />}
+      {infoOpen && <InfoDialog onClose={() => setInfoOpen(false)} />}
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-sm">

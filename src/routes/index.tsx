@@ -187,7 +187,7 @@ function Studio() {
     const detectedMime = LANGS.find((x) => x.value === l)?.mime ?? (f.type || "application/octet-stream");
     setMime(detectedMime);
     setBinaryName(f.name);
-    if (/^text\\//i.test(detectedMime) || /json|javascript|xml|svg|yaml/i.test(detectedMime)) {
+    if (/^text\//i.test(detectedMime) || /json|javascript|xml|svg|yaml/i.test(detectedMime)) {
       setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(l);
     } else { setBinaryData(bytes); setCode(""); setLang("plaintext"); }
     toast.success(`Loaded ${f.name}`);
@@ -426,7 +426,7 @@ function Studio() {
         </aside>
       </div>
 
-      {urlToolOpen && <UrlToolDialog onClose={() => setUrlToolOpen(false)} onEmbed={(html) => { setBinaryData(null); setBinaryName("embed.html"); setCode(html); setMime("text/html"); setLang("html"); }} onFetched={({ name, mime: fetchedMime, bytes }) => { setMime(fetchedMime); setBinaryName(name); if (/^text\\//i.test(fetchedMime) || /json|javascript|xml|svg|yaml/i.test(fetchedMime)) { setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(guessLang(fetchedMime)); } else { setCode(""); setBinaryData(bytes); setLang("plaintext"); } }} />}
+      {urlToolOpen && <UrlToolDialog onClose={() => setUrlToolOpen(false)} onEmbed={(html) => { setBinaryData(null); setBinaryName("embed.html"); setCode(html); setMime("text/html"); setLang("html"); }} onFetched={({ name, mime: fetchedMime, bytes }) => { setMime(fetchedMime); setBinaryName(name); if (/^text\//i.test(fetchedMime) || /json|javascript|xml|svg|yaml/i.test(fetchedMime)) { setBinaryData(null); setCode(new TextDecoder().decode(bytes)); setLang(guessLang(fetchedMime)); } else { setCode(""); setBinaryData(bytes); setLang("plaintext"); } }} />}
       {infoOpen && <InfoDialog onClose={() => setInfoOpen(false)} />}
 
       {dragging && (

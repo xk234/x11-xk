@@ -34,7 +34,7 @@ async function unpack(payload: string): Promise<{ mime: string; bytes: Uint8Arra
     const codec = flags & 24;
     if (codec === F_CODEC_GZIP || codec === F_CODEC_DEFLATE) {
       const format = codec === F_CODEC_GZIP ? "gzip" : "deflate";
-      body = new Uint8Array(await new Response(new Blob([body]).stream().pipeThrough(new DecompressionStream(format))).arrayBuffer());
+      body = new Uint8Array(await new Response(new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream(format))).arrayBuffer());
     } else {
       body = inflateSync(body);
     }
@@ -73,7 +73,7 @@ export async function onRequest(context: { request: Request; params: Record<stri
     const allowed = /^(image\/(png|jpeg|webp|gif|avif|bmp)|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|font\/[a-z0-9.+-]+|application\/(pdf|font-woff|font-woff2|octet-stream)|application\/vnd\.ms-fontobject)$/;
     if (!allowed.test(safeMime)) return response("Raw mode only serves passive media, fonts and documents. HTML, SVG, CSS and scripts are not served here.", 415);
     const headers = { "Content-Length": String(bytes.byteLength), "Accept-Ranges": "bytes", "Content-Disposition": "inline" };
-    return response(request.method === "HEAD" ? null : bytes, 200, safeMime, headers);
+    return response(request.method === "HEAD" ? null : bytes as BodyInit, 200, safeMime, headers);
   } catch (error) {
     return response(error instanceof Error ? error.message : "Unable to decode raw payload", 400);
   }

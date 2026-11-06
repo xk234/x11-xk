@@ -241,7 +241,7 @@ export async function onRequest({ request, env }: { request: Request; env: Env }
   if (request.method !== "GET" && request.method !== "HEAD") return response("Method not allowed.", 405, undefined, { Allow: "GET, HEAD, POST, OPTIONS" });
   const url = new URL(request.url);
   if (url.searchParams.get("health") === "1") {
-    return response(JSON.stringify({ ok: true, endpoint: "/r", inlineMime: "any-valid-mime", upload: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, maxUploadBytes: MAX_UPLOAD_BYTES, multipart: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, range: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
+    return response(JSON.stringify({ ok: true, endpoint: "/r", inlineMime: "any-valid-mime", upload: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, maxSingleUploadBytes: MAX_UPLOAD_BYTES, multipartPartBytes: 8 * 1024 * 1024, maxMultipartParts: 10000, multipartSessionLifetimeDays: 7, multipart: !!env.X11_R2 && !!env.X11_UPLOAD_KEY, range: true }), 200, "application/json; charset=utf-8", { "Cache-Control": "no-store" });
   }
   const id = url.searchParams.get("id");
   if (id) return handleStored(request, env, id);

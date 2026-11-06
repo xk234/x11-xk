@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { decodeAny } from "@/lib/codec2";
+import { decodeAny, isUrlSource } from "@/lib/codec2";
 
 export const Route = createFileRoute("/doc.write")({
   head: () => ({
@@ -29,6 +29,22 @@ function DocumentWriteRoute() {
     if (!payload) {
       setError("No document payload was provided.");
       return;
+    }
+
+    // External URLs can be displayed in an isolated frame without reading their
+    // response bytes, so this path does not need CORS permission.
+    if (isUrlSource(payload)) {
+      try {
+        const target = payload.startsWith("//")
+          ? new URL(payload, location.href).toString()
+          : /^https?:\/\//i.test(payload) || /^blob:/i.test(payload)
+            ? payload
+            : `https://${payload.replace(/^\/+/, "")}`;
+        setView({ kind: "url", value: target });
+      } catch {
+        setError("That document URL is invalid.");
+      }
+      return () => { active = false; };
     }
 
     decodeAny(payload).then((decoded) => {

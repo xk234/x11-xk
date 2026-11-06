@@ -193,15 +193,20 @@ function Studio() {
     toast.success(`Loaded ${f.name}`);
   };
 
-  const importLink = () => {
-    const d = decodePayload(payloadFromUrl(importText));
-    if (!d) { toast.error("That doesn't look like a valid x11 link"); return; }
-    setCode(d.content);
-    setMime(d.mime);
-    setLang(guessLang(d.mime));
-    setImportOpen(false);
-    setImportText("");
-    toast.success("Link decoded into the editor");
+  const importLink = async () => {
+    const input = payloadFromUrl(importText);
+    const decoded = await decodeAny(input);
+    if (decoded.status === "locked") { toast.error("Password-protected links must be opened directly to unlock."); return; }
+    if (decoded.status === "ok") {
+      setMime(decoded.mime); setBinaryName(decoded.meta.name || "");
+      if (decoded.text !== null) { setBinaryData(null); setCode(decoded.text); setLang(guessLang(decoded.mime)); }
+      else { setCode(""); setBinaryData(decoded.bytes); setLang("plaintext"); }
+      setImportOpen(false); setImportText(""); toast.success("Content imported"); return;
+    }
+    const legacy = decodePayload(input);
+    if (!legacy) { toast.error(decoded.reason || "Invalid x11 link or blocked URL"); return; }
+    setBinaryData(null); setBinaryName(""); setCode(legacy.content); setMime(legacy.mime); setLang(guessLang(legacy.mime));
+    setImportOpen(false); setImportText(""); toast.success("Legacy link decoded");
   };
 
   const format = () => editorRef.current?.getAction("editor.action.formatDocument")?.run();

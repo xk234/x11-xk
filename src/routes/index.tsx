@@ -137,7 +137,7 @@ function Studio() {
     return () => clearTimeout(t);
   }, [code, mime, mounted]);
 
-  const base = mounted ? location.origin + location.pathname : "";
+  const base = mounted ? `${location.origin}/doc.write` : "";
   const [payload, setPayload] = useState("");
   const sourceBytes = useMemo(() => binaryData ?? new TextEncoder().encode(previewCode), [binaryData, previewCode]);
   useEffect(() => {
@@ -177,10 +177,10 @@ function Studio() {
   }, [url, remember]);
 
   const open = useCallback(() => {
-    if (!payload) { toast.error("Nothing to open yet"); return; }
+    if (!url) { toast.error("Nothing to open yet"); return; }
     remember();
-    window.open(`${location.origin}/doc.write#${payload}`, "_blank", "noopener,noreferrer");
-  }, [payload, remember]);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [url, remember]);
 
   const download = () => {
     if (!sourceBytes.length) return;

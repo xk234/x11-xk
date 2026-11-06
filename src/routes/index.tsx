@@ -164,6 +164,7 @@ function Studio() {
     return () => { active = false; };
   }, [sourceBytes, mime, compression, instant, rewrite, password, binaryName]);
   const url = payload ? `${base}#${payload}` : "";
+  const rawUrl = payload ? `${base}r/${payload}` : "";
   const origBytes = sourceBytes.length;
   const ratio = origBytes ? Math.max(0, (1 - payload.length / origBytes) * 100) : 0;
 
@@ -437,6 +438,7 @@ function Studio() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button variant="hero" onClick={copy} disabled={!url}><Copy /> Copy</Button>
               <Button variant="outline" onClick={open} disabled={!url}><ExternalLink /> Open</Button>
+              <Button variant="outline" size="sm" onClick={async () => { if (!rawUrl) return; await navigator.clipboard.writeText(rawUrl); toast.success("Raw resource URL copied"); }} disabled={!rawUrl || !!password}><Link2 /> Copy raw URL</Button>
               <Button variant="outline" size="sm" onClick={download} disabled={!sourceBytes.length}><Download /> Download</Button>
               <Button variant={showQr ? "secondary" : "outline"} size="sm" onClick={() => setShowQr(!showQr)} disabled={!url}><QrCode /> QR code</Button>
             </div>
@@ -447,6 +449,7 @@ function Studio() {
               </div>
             )}
 
+            {rawUrl && <p className="mt-2 text-[10px] text-muted-foreground">Raw URL serves supported passive assets with cross-origin headers. It requires the Cloudflare Pages /r function; fragments alone cannot be fetched by other apps. Password-protected links are not available in raw mode.</p>}
             {url && limit && (
               <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-3 gap-2 text-center">
